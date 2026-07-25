@@ -451,7 +451,7 @@ function buildStoreHtml(scene, panelDataUrl) {
           <header class="masthead">
             <span class="brand-block">${brandSvg(26)}</span>
             <span class="brand-name">SnapContext</span>
-            <span class="mast-meta">CHROME · WHALE MV3 · <b>V0.2.0</b></span>
+            <span class="mast-meta">CHROME · WHALE MV3 · <b>V0.4.0</b></span>
           </header>
           <div class="body">
             <section class="copy">
