@@ -6,6 +6,31 @@ tags: [changelog]
 
 # Changelog
 
+## 0.4.1 — 미출시 (worker-only · 배포 대기)
+
+> 배포면: worker 만. 확장 코드 변경 0 → **스토어 재심사 없음**(ADR-014 2-트랙 버전 스킴의 첫 실증). 버전 정본은 `worker/src/mcp.ts` serverInfo(→0.4.1)만 bump, 확장 manifest 는 0.4.0 유지.
+
+### `/upload` rate-limit (보안 하드닝)
+
+- **`/upload` 분당 20회/IP 초과 → 429.** 지금까지 mutating 엔드포인트 중 `/upload` 만 per-IP 스로틀이 없어(413/415/401 만 존재) R2/D1 플러딩에 열려 있었다. `/token`(분당 10회, `token-rate-limit.ts`)과 **카운터 Map 을 분리**(`worker/src/upload-rate-limit.ts`)해 발급 한도와 업로드 한도가 서로 잠식하지 않게 했다. 업로드는 캡처마다 반복돼 발급보다 잦으므로 한도를 20으로 둬 정상 버스트에 헤드룸을 준다.
+- **게이트를 `/upload` 분기 최상단에** — content-length·formData 파싱 전에 abusive load 를 흘린다. IP 는 `CF-Connecting-IP`(`/token` 선례와 동일). in-memory fixed-window 라 isolate 재시작 시 리셋되는 한계는 `/token` 과 동일(문서화된 트레이드).
+
+### 버전 스킴 (ADR-014)
+
+- **2-트랙 버전 스킴 신설.** 확장(스토어 심사)과 worker(`wrangler deploy`)는 배포 경로가 달라, 각 배포면은 자기 코드가 바뀔 때만 자기 버전 파일을 bump 한다. worker-only 변경이 확장 재심사를 강제하던 구멍을 막는다. serverInfo(0.4.1)와 manifest(0.4.0)의 divergence 는 정상이며, 다음 확장 릴리즈에서 재정합한다.
+
+### 스파이크 (0.4.2 착수 게이트)
+
+- **MCP 인라인 이미지블록 클라이언트 호환 조사**(`docs/research/mcp-image-block-compat.md`). 0.4.2 private delivery 의 최대 기술 리스크. 결론: C1 base64 인라인은 Claude Code·Cursor·Codex 전부 깨짐 → **C2 서명 URL 채택**. P 착수 게이트 = green.
+
+### 검증
+
+- worker: node 191 + test-d1 6 = **197 passed**(0.4.0 기준선 192 + `/upload` rate-limit 5[라우트 3·윈도경계 순수함수 2]). `tsc --noEmit` 통과. 확장 테스트·빌드는 무변경(worker-only).
+
+### 배포 선행 조건 (사람 게이트)
+
+- `wrangler deploy`(worker 0.4.1). 스토어 제출·시크릿·D1 마이그레이션 없음.
+
 ## 0.4.0 — 미출시 (P6 완료 · 배포 대기)
 
 ### 온보딩 UI + 문서 정합 (P6) — 트랙 D 마감

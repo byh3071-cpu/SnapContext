@@ -20,6 +20,7 @@ import {
 } from './ingest'
 import { generateUserToken, ownerFromToken, verifyUserToken } from './token'
 import { allowTokenRequest } from './token-rate-limit'
+import { allowUploadRequest } from './upload-rate-limit'
 import type { Env } from './env'
 
 export type { Env }
@@ -118,6 +119,12 @@ export default {
     // 업로드: POST /upload (multipart/form-data: image 필수, context 선택)
     // Authorization optional — 없음=익명(owner NULL). malformed/HMAC 실패=401. Origin 검증 없음.
     if (req.method === 'POST' && url.pathname === '/upload') {
+      // rate-limit 을 분기 최상단에 — body 버퍼링·formData 파싱 전에 abusive load 를 흘린다.
+      // /token 과 카운터 Map 분리(upload-rate-limit.ts): 발급 한도와 서로 잠식하지 않음.
+      const ip = req.headers.get('CF-Connecting-IP') ?? ''
+      if (!allowUploadRequest(ip)) {
+        return textResponse('업로드 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.', 429)
+      }
       const cl = Number(req.headers.get('content-length') ?? '0')
       if (Number.isFinite(cl) && cl > MAX_UPLOAD_BYTES + 1024 * 1024) {
         return textResponse('파일이 너무 큽니다. (최대 10MB)', 413)
