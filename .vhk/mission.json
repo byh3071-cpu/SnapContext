@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "objective": "0.4.0 트랙 D P6 — 온보딩 UI + 문서 정합 (T6.1 온보딩 토큰 UI: getStoredToken·setUserToken + ShortcutsHelp 셋째 그룹[토큰 마스킹+복사·다른 기기 붙여넣기·Claude/Codex 복붙 명령] / T6.2 PRIVACY 개정+7일 전수+check-goal-3 / T6.3 ADR 011·012 + register-mcp sc_ 개정 / T6.4 스토어킷 0.4.0 + 버전 4값 bump). P5(PR #22) 미머지 위에 쌓아 트랙 D 일괄 머지 단위 구성. src/**·docs/**·scripts/** 스코프 유지. 미해결(사람 게이트): 머지·배포·TOKEN_SIGNING_SECRET 주입·R2 lifecycle 30일 상향·Origin 실워커 스모크·스토어 재제출",
+  "objective": "0.4.2 Private-by-Design (PRD-0.4.2, plan-audit 통과 2026-07-27) — P1 worker owner-scope(T1.1 pack/analyze owner 격리 test-first·교차→404 / T1.2 upload owner→R2 customMetadata / T1.3 레거시 D1 fallback) → P2 서명 /i(image-url.ts·test-first) → P3 ext post-share 비공개+D0 메인승격(test-first) → P4 ADR 015~017·PRIVACY·버전 0.4.2 → P5 /s 제거(2차 배포 후). 배포 계약: 1차=owner-gate만, breaking(서명 /i·url 제거·/s 제거)은 전부 2차 일괄(PRD 결정#6). 미해결(사람 게이트): 0.4.0 스토어 제출(0.3.0 심사 통과 확인됨)·worker 1/2차 배포·재심사#1·Phase별 머지·tag v0.4.2",
   "scope": [
     "src/**",
     "tests/**",
@@ -17,5 +17,5 @@
     "docs/ui-audit/**"
   ],
   "createdAt": "2026-06-04T13:32:15.559Z",
-  "updatedAt": "2026-07-23T00:00:00.000Z"
+  "updatedAt": "2026-07-27T00:00:00.000Z"
 }

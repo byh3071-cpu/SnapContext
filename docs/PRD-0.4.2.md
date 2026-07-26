@@ -14,8 +14,8 @@ tags: [prd, privacy, worker, mcp, image-delivery, onboarding, v0.4.2]
 
 ## 배경 (0.4.0/0.4.1 완료 상태)
 
-- 0.4.0: per-user HMAC 토큰 + owner(SHA-256(토큰)) 스탬프 + MCP 자발사용 + 만료 1/7/30일. 미출시(심사 대기).
-- 0.4.1: `/upload` rate-limit + 2트랙 버전 스킴(ADR-014). worker-only, 미배포.
+- 0.4.0: per-user HMAC 토큰 + owner(SHA-256(토큰)) 스탬프 + MCP 자발사용 + 만료 1/7/30일. worker는 라이브, 확장은 미제출(0.3.0 심사 종료 2026-07-21 확인 → 제출 가능).
+- 0.4.1: `/upload` rate-limit + 2트랙 버전 스킴(ADR-014). worker-only, 배포됨(2026-07-26 라이브 serverInfo 0.4.1 실측).
 - **문제 (0.4.0이 남긴 프라이버시 구멍)**:
   - ① **`snap_pack`/`snap_analyze`가 owner 무검사** (`mcp.ts:102·147`, 주석 `mcp.ts:74`) — 아무 유효 토큰이나 id만 알면 남 캡처를 통째로 읽는다. owner 격리는 `snap_history`(목록)에만 적용 — ADR-012 **결정#3**이 owner 필터를 조회 전용으로 좁혀 pack/analyze를 사실상 무검사로 남겼다.
   - ② **`/i`·`/s`가 무인증** (`index.ts:236`·`268`) — id가 곧 열쇠. `/i`는 사람 공유용이 아니라 **AI가 이미지를 fetch 하는 통로**(`pack.ts:79`가 다이제스트에 `/i/{id}` 공개 URL 삽입)라, 삭제가 아니라 인증전달로 대체해야 한다. 게다가 `/s` 뷰어(`lib.ts:212`)가 **서명 없는** `/i`를 임베드하므로 `/i` 서명강제와 `/s` 유지는 같은 배포에 못 둔다(→결정#6 2단계).
