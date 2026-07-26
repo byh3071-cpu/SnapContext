@@ -99,7 +99,7 @@
 - 새로 배운 것 → docs/til.md 에 한 줄
 - 스키마/타입 변경 → docs/changelog.md 에 기록
 
-<!-- YOHAN-ROSTER-CARD:BEGIN (managed by yohan-brain ops/propagation ??SoT瑜?怨좎퀜?? 吏곸젒?섏젙 湲덉?) -->
+<!-- YOHAN-ROSTER-CARD:BEGIN (managed by yohan-brain ops/propagation — SoT를 고쳐라, 직접수정 금지) -->
 ## 상시 지휘자 — 라우팅 카드 (yohan ecosystem)
 
 > SoT: yohan-brain `memory/core/agent-roster.yaml` `conductor_always_on` (v0.4+, status=active면 obey).
