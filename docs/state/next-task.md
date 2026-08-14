@@ -28,3 +28,17 @@ TASK: 0.4.2 원클릭 local dogfood harness 구축 및 Codex 10분 smoke
     - production binding·URL 사용 0건과 결과 로그 확인
   human_gate_after: 분리된 HTTPS staging 생성 및 Claude Code·Cursor·Codex 실클라이언트 smoke
 ```
+
+## 2026-08-15 — SnapContext 0.4.2 T4 착수
+
+```text
+TASK: 0.4.2 로컬 MCP 등록과 Codex 일상 dogfood 절차 문서화
+  status: IN_PROGRESS
+  priority: P0
+  scope: scripts/register-mcp.ps1, docs/dogfood.md, TASKS.md, 온보딩 계약 테스트
+  forbidden: deploy, production binding/data, secret/config 변경, remote push, tag/merge
+  evidence:
+    - register-mcp.ps1 production 기본값을 유지한 -Local URL 분기
+    - 로컬 /token 발급과 세션 전용 SNAPCONTEXT_MCP_TOKEN 절차
+    - Codex 일상 검증과 세 클라이언트 릴리즈 게이트 분리
+```

@@ -3,6 +3,7 @@
 ## Active
 
 - [ ] **P0 — SnapContext 0.4.2 원클릭 로컬 dogfood 검증 환경**
+  - 상태: **IN_PROGRESS** — T4 로컬 MCP 등록과 일상 검증 절차를 문서화한다.
   - 목적: 구현된 사람 직접 전달과 MCP private 저장 흐름을 production 데이터 없이 10분 안에 반복 검증한다.
   - 한 명령으로 local Worker, local D1 migration, localhost endpoint 확장 build, 전용 Chrome profile과 pixel-only marker fixture를 준비한다.
   - golden path: 임의 marker 캡처 → 고정 → PNG 직접 전달 → `/captures` 저장 → `snap_history` → `snap_analyze` → marker 판독 → 즉시 삭제 → `NOT_FOUND` 확인.
