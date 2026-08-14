@@ -52,6 +52,7 @@ tests/e2e/dogfood/fixtures/out/
 .dogfood-wrangler.pid
 worker/.dev.vars.dogfood
 worker/.dev.vars.aside-dogfood-*
+worker/.dogfood-runtime/
 
 # Phase 4 1회용 로컬 스크립트 잔재 (정식본은 scripts/e2e-smoke.ps1)
 worker/release-gates.ps1

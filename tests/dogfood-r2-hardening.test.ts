@@ -66,10 +66,12 @@ describe('R2 B2 PID identity', () => {
 
   it('identity 일치만 통과한다', async () => {
     const { serializePidMeta, parsePidMeta, assertProcessIdentityMatch } = await loadLib()
+    const cmd =
+      '"C:/n/node.exe" C:/n/node_modules/wrangler/bin/wrangler.js dev --local --env-file .dev.vars.dogfood'
     const meta = {
       pid: 4242,
       startedAtMs: 1_700_000_000_000,
-      cmd: 'node wrangler.js dev --local',
+      cmd,
       bootNonce: 'abcdabcdabcdabcd'
     }
     const parsed = parsePidMeta(serializePidMeta(meta))
@@ -77,14 +79,18 @@ describe('R2 B2 PID identity', () => {
     expect(() =>
       assertProcessIdentityMatch(meta, {
         pid: 4242,
-        cmd: 'node wrangler.js dev',
+        cmd,
         startedAtMs: meta.startedAtMs
       })
     ).not.toThrow()
     expect(() => assertProcessIdentityMatch(meta, null)).toThrow(/stale/)
     expect(() =>
-      assertProcessIdentityMatch(meta, { pid: 4242, cmd: 'notepad.exe' })
-    ).toThrow(/wrangler/)
+      assertProcessIdentityMatch(meta, {
+        pid: 4242,
+        cmd: 'notepad.exe',
+        startedAtMs: meta.startedAtMs
+      })
+    ).toThrow(/wrangler|identity|종료 거부/)
   })
 })
 

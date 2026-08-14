@@ -74,11 +74,13 @@ export default {
   ): Promise<Response> {
     const url = new URL(req.url)
 
-    // dogfood 부트 정체 확인 — DOGFOOD_BOOT_NONCE 미설정 시 일반 404와 동일
+    // dogfood 부트 정체 — DOGFOOD_LOCAL=1 AND nonce 일치만 200 (그 외 일반 404)
     if (req.method === 'GET' && url.pathname === '/dogfood-health') {
       const expected = env.DOGFOOD_BOOT_NONCE
       const given = url.searchParams.get('nonce')
+      const localOk = env.DOGFOOD_LOCAL === '1'
       if (
+        localOk &&
         expected !== undefined &&
         expected.length > 0 &&
         given !== null &&

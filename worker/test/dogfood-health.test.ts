@@ -1,33 +1,62 @@
 import { describe, expect, it } from 'vitest'
 
 describe('dogfood-health', () => {
-  it('nonce 일치 시에만 200, 그 외 404', async () => {
+  it('DOGFOOD_LOCAL=1 과 nonce 일치 시에만 200', async () => {
     const { default: worker } = await import('../src/index')
-    const env = {
-      DOGFOOD_BOOT_NONCE: 'test-nonce-12345678',
+    const base = {
       BUCKET: {} as R2Bucket,
       DB: {} as D1Database
     }
+    const okEnv = {
+      ...base,
+      DOGFOOD_LOCAL: '1',
+      DOGFOOD_BOOT_NONCE: 'test-nonce-12345678'
+    }
     const ok = await worker.fetch(
       new Request('http://127.0.0.1:8787/dogfood-health?nonce=test-nonce-12345678'),
-      env,
+      okEnv,
       {} as ExecutionContext
     )
     expect(ok.status).toBe(200)
     expect(await ok.json()).toEqual({ ok: true, dogfood: true })
+  })
 
-    const bad = await worker.fetch(
+  it('marker 누락·오값·nonce 단독은 모두 404', async () => {
+    const { default: worker } = await import('../src/index')
+    const base = {
+      BUCKET: {} as R2Bucket,
+      DB: {} as D1Database
+    }
+    const nonce = 'test-nonce-12345678'
+    const req = () =>
+      new Request(`http://127.0.0.1:8787/dogfood-health?nonce=${nonce}`)
+
+    const missingMarker = await worker.fetch(
+      req(),
+      { ...base, DOGFOOD_BOOT_NONCE: nonce },
+      {} as ExecutionContext
+    )
+    expect(missingMarker.status).toBe(404)
+
+    const wrongMarker = await worker.fetch(
+      req(),
+      { ...base, DOGFOOD_LOCAL: 'true', DOGFOOD_BOOT_NONCE: nonce },
+      {} as ExecutionContext
+    )
+    expect(wrongMarker.status).toBe(404)
+
+    const nonceOnly = await worker.fetch(
+      req(),
+      { ...base, DOGFOOD_BOOT_NONCE: nonce },
+      {} as ExecutionContext
+    )
+    expect(nonceOnly.status).toBe(404)
+
+    const wrongNonce = await worker.fetch(
       new Request('http://127.0.0.1:8787/dogfood-health?nonce=wrong'),
-      env,
+      { ...base, DOGFOOD_LOCAL: '1', DOGFOOD_BOOT_NONCE: nonce },
       {} as ExecutionContext
     )
-    expect(bad.status).toBe(404)
-
-    const unset = await worker.fetch(
-      new Request('http://127.0.0.1:8787/dogfood-health?nonce=test-nonce-12345678'),
-      { BUCKET: {} as R2Bucket, DB: {} as D1Database },
-      {} as ExecutionContext
-    )
-    expect(unset.status).toBe(404)
+    expect(wrongNonce.status).toBe(404)
   })
 })

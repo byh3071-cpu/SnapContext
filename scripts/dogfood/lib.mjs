@@ -11,6 +11,13 @@ export const LOCAL_UPLOAD_ENDPOINT = `http://${LOCAL_HOST}:${LOCAL_PORT}`
 export const DOGFOOD_VARS_FILENAME = '.dev.vars.dogfood'
 export const DOGFOOD_LOCAL_MARKER = '1'
 
+/** M2: generic worker/.dev.vars 는 이동·삭제 금지. runtime cwd + --env-file 만. */
+export const DEV_VARS_POLICY = Object.freeze({
+  neverRenameGeneric: true,
+  useRuntimeCwd: true,
+  restoreAsideOnBoot: true
+})
+
 export const BOOTSTRAP_STEPS = Object.freeze([
   'assertPortFree',
   'ensureDogfoodVars',
@@ -368,12 +375,71 @@ export function assertInvalidTokenRetrySequence(requests, baseUrl = LOCAL_UPLOAD
 }
 
 /**
- * @param {{ pid: number, startedAtMs: number, cmd: string, bootNonce: string }} meta
+ * @param {{ pid: number, startedAtMs: number, cmd: string, bootNonce: string, identity?: CommandIdentity }} meta
  */
 export function serializePidMeta(meta) {
   if (!Number.isInteger(meta.pid) || meta.pid <= 0) throw new Error('pid 메타 오류')
-  if (!meta.cmd.includes('wrangler')) throw new Error('pid 메타 cmd 에 wrangler 없음')
-  return JSON.stringify(meta)
+  const identity = meta.identity ?? normalizeCommandIdentity(meta.cmd)
+  return JSON.stringify({ ...meta, identity })
+}
+
+/**
+ * @typedef {{
+ *   wranglerEntry: string,
+ *   hasLocalFlag: boolean,
+ *   envFile: string
+ * }} CommandIdentity
+ */
+
+/**
+ * wrangler 소유 명령 식별자 — 부분 문자열 includes('wrangler') 금지.
+ * @param {string} cmd
+ * @returns {CommandIdentity}
+ */
+export function normalizeCommandIdentity(cmd) {
+  if (typeof cmd !== 'string' || cmd.trim().length === 0) {
+    throw new Error('명령줄을 읽지 못함 — fail-closed')
+  }
+  // Windows 따옴표 경로 보존하며 토큰 분리
+  const tokens = []
+  const re = /"([^"]+)"|(\S+)/g
+  let m
+  while ((m = re.exec(cmd)) !== null) {
+    tokens.push((m[1] ?? m[2]).replace(/\\/g, '/'))
+  }
+  const wranglerEntry = tokens.find((t) => /\/wrangler\/bin\/wrangler\.js$/i.test(t))
+  if (!wranglerEntry) {
+    throw new Error(`wrangler 진입 파일 없음(정확한 경로 필요): ${cmd}`)
+  }
+  const hasLocalFlag = tokens.includes('--local')
+  if (!hasLocalFlag) {
+    throw new Error('명령에 --local 없음')
+  }
+  const envIdx = tokens.indexOf('--env-file')
+  if (envIdx < 0 || envIdx + 1 >= tokens.length) {
+    throw new Error('명령에 --env-file 없음')
+  }
+  const envFile = tokens[envIdx + 1].split('/').pop() ?? ''
+  if (envFile !== DOGFOOD_VARS_FILENAME) {
+    throw new Error(`--env-file 값이 ${DOGFOOD_VARS_FILENAME} 가 아님: ${envFile}`)
+  }
+  return {
+    wranglerEntry: wranglerEntry.toLowerCase(),
+    hasLocalFlag: true,
+    envFile
+  }
+}
+
+/**
+ * @param {CommandIdentity} a
+ * @param {CommandIdentity} b
+ */
+export function commandIdentitiesEqual(a, b) {
+  return (
+    a.wranglerEntry === b.wranglerEntry &&
+    a.hasLocalFlag === b.hasLocalFlag &&
+    a.envFile === b.envFile
+  )
 }
 
 /**
@@ -395,29 +461,95 @@ export function parsePidMeta(text) {
   ) {
     throw new Error('PID 메타 형식 오류')
   }
-  if (!raw.cmd.includes('wrangler')) throw new Error('PID 메타 cmd 검증 실패')
+  const identity =
+    raw.identity && typeof raw.identity === 'object'
+      ? /** @type {CommandIdentity} */ (raw.identity)
+      : normalizeCommandIdentity(raw.cmd)
   return {
     pid: raw.pid,
     startedAtMs: raw.startedAtMs,
     cmd: raw.cmd,
-    bootNonce: raw.bootNonce
+    bootNonce: raw.bootNonce,
+    identity
   }
 }
 
 /**
- * @param {{ pid: number, startedAtMs: number, cmd: string }} expected
+ * live.startedAtMs·cmd 필수. 부분 문자열 wrangler 판정 금지.
+ * @param {{ pid: number, startedAtMs: number, cmd: string, identity?: CommandIdentity }} expected
  * @param {{ pid: number, startedAtMs?: number, cmd?: string } | null} live
  */
 export function assertProcessIdentityMatch(expected, live) {
   if (live == null) throw new Error(`프로세스 없음 pid=${expected.pid} (stale)`)
   if (live.pid !== expected.pid) throw new Error('PID 불일치')
-  if (typeof live.cmd === 'string' && !live.cmd.includes('wrangler')) {
-    throw new Error(`command line 에 wrangler 없음: ${live.cmd}`)
+  if (typeof live.startedAtMs !== 'number' || !Number.isFinite(live.startedAtMs)) {
+    throw new Error('live 시작 시각을 읽지 못함 — fail-closed (종료 거부)')
   }
-  if (
-    typeof live.startedAtMs === 'number' &&
-    Math.abs(live.startedAtMs - expected.startedAtMs) > 120_000
-  ) {
-    throw new Error('프로세스 시작 시각이 PID 메타와 크게 어긋남 — stale/재사용 가능')
+  if (typeof live.cmd !== 'string' || live.cmd.trim().length === 0) {
+    throw new Error('live 명령줄을 읽지 못함 — fail-closed (종료 거부)')
   }
+  if (Math.abs(live.startedAtMs - expected.startedAtMs) > 60_000) {
+    throw new Error('프로세스 시작 시각이 PID 메타와 어긋남 — stale/재사용 가능')
+  }
+  const expectedId = expected.identity ?? normalizeCommandIdentity(expected.cmd)
+  let liveId
+  try {
+    liveId = normalizeCommandIdentity(live.cmd)
+  } catch (err) {
+    throw new Error(
+      `live 명령 identity 검증 실패(종료 거부): ${err instanceof Error ? err.message : err}`
+    )
+  }
+  if (!commandIdentitiesEqual(expectedId, liveId)) {
+    throw new Error(
+      `명령 identity 불일치 — expected=${JSON.stringify(expectedId)} live=${JSON.stringify(liveId)}`
+    )
+  }
+}
+
+/**
+ * Node fetch 감사 wrapper — 매 hop + 최종 URL localhost allowlist.
+ * @param {string | URL | Request} input
+ * @param {RequestInit} [init]
+ * @param {string[]} [recorder]
+ * @returns {Promise<Response>}
+ */
+export async function auditedFetch(input, init = {}, recorder = []) {
+  const initialUrl =
+    typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.href
+        : input.url
+  let url = initialUrl
+  assertAllowedDogfoodRequestUrl(url, 'audited-fetch')
+  recorder.push(url)
+
+  /** @type {RequestInit} */
+  const baseInit = { ...init, redirect: 'manual' }
+  let res = await fetch(url, baseInit)
+  let hops = 0
+  while (res.status >= 300 && res.status < 400 && hops < 10) {
+    const loc = res.headers.get('location')
+    if (loc == null || loc.length === 0) {
+      throw new Error(`redirect Location 없음 status=${res.status}`)
+    }
+    const next = new URL(loc, url).href
+    assertAllowedDogfoodRequestUrl(next, `audited-fetch-hop-${hops}`)
+    recorder.push(next)
+    url = next
+    hops += 1
+    // POST 본문 재전송은 하지 않는다 — dogfood 경로는 3xx 를 기대하지 않음
+    res = await fetch(url, {
+      method: 'GET',
+      headers: init.headers,
+      redirect: 'manual'
+    })
+  }
+  if (res.url && res.url.length > 0) {
+    assertAllowedDogfoodRequestUrl(res.url, 'audited-fetch-final')
+    recorder.push(res.url)
+  }
+  assertAllowedDogfoodRequestUrl(url, 'audited-fetch-current')
+  return res
 }

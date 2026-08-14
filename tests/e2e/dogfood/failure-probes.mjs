@@ -2,8 +2,7 @@
  * dogfood failure probes (4종) — R2 hardened.
  * 순서: 동의 취소 → invalid token → 삭제 후 접근 → Worker 중단(마지막).
  */
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
@@ -12,11 +11,11 @@ import {
   assertInvalidTokenRetrySequence,
   assertMcpToolNotFound,
   assertNoProductionUrl,
-  assertProcessIdentityMatch,
+  auditedFetch,
   LOCAL_UPLOAD_ENDPOINT,
-  parsePidMeta,
   stripSecretsForLog
 } from '../../../scripts/dogfood/lib.mjs'
+import { killOwnedProcessTree } from '../../../scripts/dogfood/process-own.mjs'
 import { encodeMarkerToPng } from './fixtures/marker.mjs'
 import {
   assertExplicitFailureMessage,
@@ -141,21 +140,27 @@ export async function runFailureProbes(opts) {
 
     // —— (d) 삭제 후 NOT_FOUND ——
     try {
-      const init = await mcpPost(opts.userToken, {
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: {
-          protocolVersion: '2025-11-25',
-          capabilities: {},
-          clientInfo: { name: 'dogfood-probe', version: '1.0.0' }
-        }
-      })
+      const init = await mcpPost(
+        opts.userToken,
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-11-25',
+            capabilities: {},
+            clientInfo: { name: 'dogfood-probe', version: '1.0.0' }
+          }
+        },
+        null,
+        seenUrls
+      )
       const sessionId = init.sessionId
       await mcpPost(
         opts.userToken,
         { jsonrpc: '2.0', method: 'notifications/initialized' },
-        sessionId
+        sessionId,
+        seenUrls
       )
       const analyze = await mcpPost(
         opts.userToken,
@@ -168,11 +173,11 @@ export async function runFailureProbes(opts) {
             arguments: { id: opts.deletedCaptureId, mode: 'context' }
           }
         },
-        sessionId
+        sessionId,
+        seenUrls
       )
       assertMcpToolNotFound(analyze.json)
-      const piRes = await fetch(opts.piUrl)
-      seenUrls.push(opts.piUrl)
+      const piRes = await auditedFetch(opts.piUrl, { method: 'GET' }, seenUrls)
       if (piRes.status === 200) {
         throw new Error(`삭제 후 /pi 가 200을 반환함 (status=${piRes.status})`)
       }
@@ -192,8 +197,8 @@ export async function runFailureProbes(opts) {
     // —— (b) Worker 중단 (identity kill only) ——
     try {
       await installRequestProbe(side)
-      const pid = killWranglerWithIdentity()
-      await waitWorkerDown(15000)
+      const pid = killOwnedProcessTree(PID_PATH)
+      await waitWorkerDown(15000, seenUrls)
       await side.evaluate(async (key) => {
         await chrome.storage.local.set({ [key]: 7 })
       }, CONSENT_KEY)
@@ -316,8 +321,9 @@ async function readReqs(side) {
  * @param {string} token
  * @param {unknown} body
  * @param {string | null} sessionId
+ * @param {string[]} recorder
  */
-async function mcpPost(token, body, sessionId = null) {
+async function mcpPost(token, body, sessionId = null, recorder = []) {
   assertNoProductionUrl(MCP_URL, 'MCP_URL')
   /** @type {Record<string, string>} */
   const headers = {
@@ -326,11 +332,15 @@ async function mcpPost(token, body, sessionId = null) {
     Accept: 'application/json, text/event-stream'
   }
   if (sessionId) headers['mcp-session-id'] = sessionId
-  const res = await fetch(MCP_URL, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body)
-  })
+  const res = await auditedFetch(
+    MCP_URL,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    },
+    recorder
+  )
   const text = await res.text()
   let json = null
   try {
@@ -342,60 +352,14 @@ async function mcpPost(token, body, sessionId = null) {
 }
 
 /**
- * identity 검증 후 해당 process tree 만 종료. 포트 전체 Force kill 금지.
+ * @param {number} timeoutMs
+ * @param {string[]} recorder
  */
-function killWranglerWithIdentity() {
-  if (!existsSync(PID_PATH)) {
-    throw new Error(`wrangler PID 파일 없음: ${PID_PATH}`)
-  }
-  const meta = parsePidMeta(readFileSync(PID_PATH, 'utf8'))
-  const live = readLiveProcess(meta.pid)
-  assertProcessIdentityMatch(meta, live)
-  try {
-    execFileSync('taskkill', ['/F', '/T', '/PID', String(meta.pid)], {
-      stdio: 'ignore'
-    })
-  } catch {
-    try {
-      process.kill(meta.pid)
-    } catch (err) {
-      throw new Error(
-        `wrangler 종료 실패 pid=${meta.pid}: ${err instanceof Error ? err.message : err}`
-      )
-    }
-  }
-  unlinkSync(PID_PATH)
-  return meta.pid
-}
-
-/**
- * @param {number} pid
- * @returns {{ pid: number, cmd: string } | null}
- */
-function readLiveProcess(pid) {
-  try {
-    const out = execFileSync(
-      'powershell',
-      [
-        '-NoProfile',
-        '-Command',
-        `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"; if ($null -eq $p) { '' } else { $p.CommandLine }`
-      ],
-      { encoding: 'utf8' }
-    ).trim()
-    if (!out) return null
-    return { pid, cmd: out }
-  } catch {
-    return null
-  }
-}
-
-/** @param {number} timeoutMs */
-async function waitWorkerDown(timeoutMs) {
+async function waitWorkerDown(timeoutMs, recorder) {
   const started = Date.now()
   while (Date.now() - started < timeoutMs) {
     try {
-      await fetch(`${LOCAL_UPLOAD_ENDPOINT}/`, { method: 'GET' })
+      await auditedFetch(`${LOCAL_UPLOAD_ENDPOINT}/`, { method: 'GET' }, recorder)
     } catch {
       return
     }

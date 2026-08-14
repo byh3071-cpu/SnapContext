@@ -11,6 +11,7 @@ import {
   assertAllowedDogfoodRequestUrl,
   assertMcpToolNotFound,
   assertNoProductionUrl,
+  auditedFetch,
   dogfoodHealthUrl,
   LOCAL_UPLOAD_ENDPOINT,
   parseDevVars,
@@ -47,7 +48,10 @@ function fail(name, detail) {
   throw new Error(`${name}: ${detail}`)
 }
 
-async function assertWorkerUp() {
+/**
+ * @param {string[]} recorder
+ */
+async function assertWorkerUp(recorder) {
   assertNoProductionUrl(LOCAL_UPLOAD_ENDPOINT, 'LOCAL_UPLOAD_ENDPOINT')
   const varsPath = resolve(ROOT, 'worker', '.dev.vars.dogfood')
   if (!existsSync(varsPath)) {
@@ -57,7 +61,7 @@ async function assertWorkerUp() {
   const url = dogfoodHealthUrl(vars.DOGFOOD_BOOT_NONCE)
   let res
   try {
-    res = await fetch(url, { method: 'GET' })
+    res = await auditedFetch(url, { method: 'GET' }, recorder)
   } catch (err) {
     throw new Error(
       `로컬 Worker 미기동 (${url}). 먼저 pnpm dogfood:up 실행. ${err instanceof Error ? err.message : err}`
@@ -121,8 +125,9 @@ function serveFixtureDir(rootDir) {
  * @param {string} token
  * @param {unknown} body
  * @param {string | null} sessionId
+ * @param {string[]} recorder
  */
-async function mcpPost(token, body, sessionId = null) {
+async function mcpPost(token, body, sessionId = null, recorder = []) {
   assertNoProductionUrl(MCP_URL, 'MCP_URL')
   /** @type {Record<string, string>} */
   const headers = {
@@ -131,11 +136,15 @@ async function mcpPost(token, body, sessionId = null) {
     Accept: 'application/json, text/event-stream'
   }
   if (sessionId) headers['mcp-session-id'] = sessionId
-  const res = await fetch(MCP_URL, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body)
-  })
+  const res = await auditedFetch(
+    MCP_URL,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    },
+    recorder
+  )
   const text = await res.text()
   let json = null
   try {
@@ -253,7 +262,7 @@ export async function runGoldenPath() {
   }
   mkdirSync(PROFILE_DIR, { recursive: true })
 
-  await assertWorkerUp()
+  await assertWorkerUp(seenUrls)
   const fixture = await writeMarkerFixture(FIXTURE_OUT)
   marker = fixture.marker
   // N2: 정답 marker 는 픽셀 판독 비교 전에 콘솔/로그에 노출하지 않는다
@@ -339,9 +348,13 @@ export async function runGoldenPath() {
     userToken = stored
     logStep('owner 토큰 확보', true)
 
-    const listRes = await fetch(`${LOCAL_UPLOAD_ENDPOINT}/captures?limit=5`, {
-      headers: { Authorization: `Bearer ${userToken}` }
-    })
+    const listRes = await auditedFetch(
+      `${LOCAL_UPLOAD_ENDPOINT}/captures?limit=5`,
+      {
+        headers: { Authorization: `Bearer ${userToken}` }
+      },
+      seenUrls
+    )
     if (!listRes.ok) fail('captures 목록', `status=${listRes.status}`)
     const list = /** @type {{ id: string }[]} */ (await listRes.json())
     const hit = list.find((row) => typeof row.id === 'string')
@@ -350,22 +363,28 @@ export async function runGoldenPath() {
     assertNoProductionUrl(`${LOCAL_UPLOAD_ENDPOINT}/captures/${captureId}`, 'capture-id-url')
     logStep('capture id', true, captureId)
 
-    const init = await mcpPost(userToken, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2025-11-25',
-        capabilities: {},
-        clientInfo: { name: 'dogfood-golden', version: '1.0.0' }
-      }
-    })
+    const init = await mcpPost(
+      userToken,
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          clientInfo: { name: 'dogfood-golden', version: '1.0.0' }
+        }
+      },
+      null,
+      seenUrls
+    )
     if (init.status !== 200) fail('MCP initialize', `status=${init.status}`)
     const sessionId = init.sessionId
     await mcpPost(
       userToken,
       { jsonrpc: '2.0', method: 'notifications/initialized' },
-      sessionId
+      sessionId,
+      seenUrls
     )
 
     const hist = await mcpPost(
@@ -376,7 +395,8 @@ export async function runGoldenPath() {
         method: 'tools/call',
         params: { name: 'snap_history', arguments: { limit: 5 } }
       },
-      sessionId
+      sessionId,
+      seenUrls
     )
     const histText = extractToolText(hist.json)
     if (!histText.includes(captureId)) {
@@ -395,7 +415,8 @@ export async function runGoldenPath() {
           arguments: { id: captureId, mode: 'context' }
         }
       },
-      sessionId
+      sessionId,
+      seenUrls
     )
     const digest = extractToolText(analyze.json)
     if (/NOT_FOUND|"isError"\s*:\s*true/.test(JSON.stringify(analyze.json)) && !digest.includes('/pi/')) {
@@ -405,7 +426,7 @@ export async function runGoldenPath() {
     seenUrls.push(piUrl)
     logStep('snap_analyze + /pi URL', true, piUrl)
 
-    const piRes = await fetch(piUrl)
+    const piRes = await auditedFetch(piUrl, { method: 'GET' }, seenUrls)
     if (piRes.status !== 200) fail('/pi fetch', `status=${piRes.status}`)
     const piBuf = Buffer.from(await piRes.arrayBuffer())
     if (piBuf[0] !== 0x89 || piBuf[1] !== 0x50 || piBuf[2] !== 0x4e || piBuf[3] !== 0x47) {
@@ -418,12 +439,13 @@ export async function runGoldenPath() {
     // N2: 비교 성공 후에만 사람이 보는 결과에 marker 노출
     logStep('/pi PNG + marker 픽셀 복원', true, `marker=${decoded}`)
 
-    const del = await fetch(
+    const del = await auditedFetch(
       `${LOCAL_UPLOAD_ENDPOINT}/captures/${encodeURIComponent(captureId)}`,
       {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${userToken}` }
-      }
+      },
+      seenUrls
     )
     if (del.status !== 204) fail('DELETE /captures', `status=${del.status}`)
     logStep('DELETE /captures', true)
@@ -439,7 +461,8 @@ export async function runGoldenPath() {
           arguments: { id: captureId, mode: 'context' }
         }
       },
-      sessionId
+      sessionId,
+      seenUrls
     )
     try {
       assertMcpToolNotFound(after.json)
