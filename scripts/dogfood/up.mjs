@@ -177,17 +177,18 @@ function applyMigrations() {
  * @returns {import('node:child_process').ChildProcess}
  */
 function startWranglerDev(bootNonce) {
-  const args = resolveWranglerDevArgs(DOGFOOD_VARS_FILENAME)
+  const persistTo = join(DOGFOOD_RUNTIME, '.wrangler', 'state')
+  const args = resolveWranglerDevArgs(DOGFOOD_VARS_FILENAME, { persistTo })
   for (const a of args) {
     if (typeof a === 'string') assertNoProductionUrl(a, 'wrangler-arg')
   }
   const wranglerArgs = args.slice(1)
   log(`wrangler 기동: wrangler ${wranglerArgs.join(' ')} (cwd=.dogfood-runtime)`)
   assertBin(WRANGLER_JS, 'wrangler')
-  const startedAtMs = Date.now()
   const cmd = `${process.execPath} ${WRANGLER_JS} ${wranglerArgs.join(' ')}`
+  const runtimeCwd = DOGFOOD_RUNTIME.replace(/\\/g, '/')
   // identity 사전 검증 — spawn 전에 fail-closed
-  normalizeCommandIdentity(cmd)
+  normalizeCommandIdentity(cmd, { cwd: runtimeCwd })
   const child = spawn(process.execPath, [WRANGLER_JS, ...wranglerArgs], {
     cwd: DOGFOOD_RUNTIME,
     stdio: 'ignore',
@@ -208,14 +209,29 @@ function startWranglerDev(bootNonce) {
   child.__dogfoodExited = () => exited
   const pid = child.pid
   if (pid == null) throw new Error('wrangler pid 없음')
+
+  // B1: spawn 직후 OS CreationDate 를 읽어 저장 (Date.now() 60초 창 금지)
+  let live = null
+  for (let i = 0; i < 20; i++) {
+    live = readLiveProcess(pid)
+    if (live != null) break
+    const until = Date.now() + 50
+    while (Date.now() < until) {
+      /* brief wait for process registration */
+    }
+  }
+  if (live == null) {
+    throw new Error(`spawn 직후 live 프로세스 조회 실패 pid=${pid}`)
+  }
+  const identity = normalizeCommandIdentity(live.cmd, { cwd: runtimeCwd })
   writeFileSync(
     PID_PATH,
     serializePidMeta({
       pid,
-      startedAtMs,
-      cmd,
+      startedAtMs: live.startedAtMs,
+      cmd: live.cmd,
       bootNonce,
-      identity: normalizeCommandIdentity(cmd)
+      identity
     }),
     'utf8'
   )
@@ -274,20 +290,22 @@ function prepareChromeProfile() {
 }
 
 /**
- * 부트 실패 cleanup — B1 검증된 owned tree kill. 종료 확인 전 PID 메타 삭제 금지.
+ * 부트 실패 cleanup — 검증된 owned tree kill. health 미기동 시 skipHealth.
+ * @param {{ skipHealth?: boolean }} [opts]
  */
-function cleanupFailedBoot() {
+async function cleanupFailedBoot(opts = {}) {
   if (!existsSync(PID_PATH)) return
   try {
-    killOwnedProcessTree(PID_PATH)
+    await killOwnedProcessTree(PID_PATH, {
+      skipHealth: opts.skipHealth === true
+    })
     log('부트 실패 cleanup: owned process-tree 종료 완료')
-  } catch (err) {
-    // fallback 금지 — 원인과 함께 드러낸다. PID 메타는 유지해 수동 정리 가능.
+  } catch (cleanupErr) {
     console.error(
       '[dogfood:up] cleanup 실패(PID 메타 유지):',
-      err instanceof Error ? err.message : err
+      cleanupErr instanceof Error ? cleanupErr.message : cleanupErr
     )
-    throw err
+    throw cleanupErr
   }
 }
 
@@ -304,16 +322,26 @@ async function main() {
   const child = startWranglerDev(bootNonce)
   try {
     await waitDogfoodHealthcheck(child, bootNonce)
+    viteBuild()
+    prepareChromeProfile()
+    const live = readLiveProcess(child.pid)
+    if (live == null) throw new Error('부트 직후 wrangler 프로세스 없음')
+    child.unref()
   } catch (err) {
-    cleanupFailedBoot()
+    let cleanupErr = /** @type {unknown} */ (null)
+    try {
+      // health 이전 실패면 health 결합 생략, 보존 child/PID identity 로 cleanup
+      await cleanupFailedBoot({ skipHealth: true })
+    } catch (ce) {
+      cleanupErr = ce
+    }
+    if (cleanupErr) {
+      const original = err instanceof Error ? err.message : String(err)
+      const cleanup = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+      throw new Error(`부트 실패: ${original} | cleanup 실패: ${cleanup}`)
+    }
     throw err
   }
-  viteBuild()
-  prepareChromeProfile()
-  child.unref()
-  // live identity 재확인(메타 정합성)
-  const live = readLiveProcess(child.pid)
-  if (live == null) throw new Error('부트 직후 wrangler 프로세스 없음')
   log('부트스트랩 완료. wrangler 는 백그라운드에서 계속 동작한다.')
   log(`중지: identity PID 메타 ${PID_PATH}`)
 }

@@ -25,6 +25,7 @@ interface Lib {
     startedAtMs: number
     cmd: string
     bootNonce: string
+    identity?: unknown
   }) => string
   parsePidMeta: (text: string) => {
     pid: number
@@ -32,8 +33,21 @@ interface Lib {
     cmd: string
     bootNonce: string
   }
+  normalizeCommandIdentity: (
+    cmd: string,
+    opts?: { cwd?: string }
+  ) => {
+    nodeExecutable: string
+    wranglerEntry: string
+    subcommand: string
+    ip: string
+    port: string
+    envFile: string
+    cwd: string
+    hasLocalFlag: boolean
+  }
   assertProcessIdentityMatch: (
-    expected: { pid: number; startedAtMs: number; cmd: string },
+    expected: { pid: number; startedAtMs: number; cmd: string; identity?: unknown },
     live: { pid: number; startedAtMs?: number; cmd?: string } | null
   ) => void
   healthcheckUrl: () => string
@@ -65,14 +79,19 @@ describe('R2 B2 PID identity', () => {
   })
 
   it('identity 일치만 통과한다', async () => {
-    const { serializePidMeta, parsePidMeta, assertProcessIdentityMatch } = await loadLib()
+    const { serializePidMeta, parsePidMeta, assertProcessIdentityMatch, normalizeCommandIdentity } =
+      await loadLib()
     const cmd =
-      '"C:/n/node.exe" C:/n/node_modules/wrangler/bin/wrangler.js dev --local --env-file .dev.vars.dogfood'
+      '"C:/n/node.exe" C:/n/node_modules/wrangler/bin/wrangler.js dev --ip 127.0.0.1 --port 8787 --local --env-file .dev.vars.dogfood --persist-to C:/n/worker/.dogfood-runtime/.wrangler/state'
+    const identity = normalizeCommandIdentity(cmd, {
+      cwd: 'C:/n/worker/.dogfood-runtime'
+    })
     const meta = {
       pid: 4242,
       startedAtMs: 1_700_000_000_000,
       cmd,
-      bootNonce: 'abcdabcdabcdabcd'
+      bootNonce: 'abcdabcdabcdabcd',
+      identity
     }
     const parsed = parsePidMeta(serializePidMeta(meta))
     expect(parsed.pid).toBe(4242)

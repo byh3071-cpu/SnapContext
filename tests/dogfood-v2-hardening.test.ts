@@ -1,13 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+interface CommandIdentity {
+  wranglerEntry: string
+  hasLocalFlag: boolean
+  envFile: string
+  nodeExecutable: string
+  subcommand: string
+  ip: string
+  port: string
+  cwd: string
+}
+
 interface Lib {
-  normalizeCommandIdentity: (cmd: string) => {
-    wranglerEntry: string
-    hasLocalFlag: boolean
-    envFile: string
-  }
+  normalizeCommandIdentity: (cmd: string, opts?: { cwd?: string }) => CommandIdentity
   assertProcessIdentityMatch: (
-    expected: { pid: number; startedAtMs: number; cmd: string },
+    expected: {
+      pid: number
+      startedAtMs: number
+      cmd: string
+      identity?: CommandIdentity
+    },
     live: { pid: number; startedAtMs?: number; cmd?: string } | null
   ) => void
   auditedFetch: (
@@ -24,7 +36,7 @@ interface Lib {
 }
 
 const GOOD_CMD =
-  '"C:/n/node.exe" C:/n/node_modules/wrangler/bin/wrangler.js dev --ip 127.0.0.1 --port 8787 --local --env-file .dev.vars.dogfood --show-interactive-dev-session false'
+  '"C:/n/node.exe" C:/n/node_modules/wrangler/bin/wrangler.js dev --ip 127.0.0.1 --port 8787 --local --env-file .dev.vars.dogfood --persist-to C:/repo/worker/.dogfood-runtime/.wrangler/state --show-interactive-dev-session false'
 
 async function loadLib(): Promise<Lib> {
   const specifier = '../scripts/dogfood/lib.mjs'
@@ -33,8 +45,15 @@ async function loadLib(): Promise<Lib> {
 
 describe('V2 B1 process ownership fail-closed', () => {
   it('같은 PID + --label=wrangler 스푸핑 명령을 거부한다', async () => {
-    const { assertProcessIdentityMatch } = await loadLib()
-    const expected = { pid: 4242, startedAtMs: 1_700_000_000_000, cmd: GOOD_CMD }
+    const { assertProcessIdentityMatch, normalizeCommandIdentity } = await loadLib()
+    const expected = {
+      pid: 4242,
+      startedAtMs: 1_700_000_000_000,
+      cmd: GOOD_CMD,
+      identity: normalizeCommandIdentity(GOOD_CMD, {
+        cwd: 'C:/repo/worker/.dogfood-runtime'
+      })
+    }
     expect(() =>
       assertProcessIdentityMatch(expected, {
         pid: 4242,
@@ -45,10 +64,17 @@ describe('V2 B1 process ownership fail-closed', () => {
   })
 
   it('live 시작 시각 누락 시 종료를 거부한다', async () => {
-    const { assertProcessIdentityMatch } = await loadLib()
+    const { assertProcessIdentityMatch, normalizeCommandIdentity } = await loadLib()
     expect(() =>
       assertProcessIdentityMatch(
-        { pid: 1, startedAtMs: 1000, cmd: GOOD_CMD },
+        {
+          pid: 1,
+          startedAtMs: 1000,
+          cmd: GOOD_CMD,
+          identity: normalizeCommandIdentity(GOOD_CMD, {
+            cwd: 'C:/repo/worker/.dogfood-runtime'
+          })
+        },
         { pid: 1, cmd: GOOD_CMD }
       )
     ).toThrow(/시작 시각/)
@@ -56,7 +82,9 @@ describe('V2 B1 process ownership fail-closed', () => {
 
   it('정규화 identity 는 wrangler.js·--local·env-file 을 요구한다', async () => {
     const { normalizeCommandIdentity, DOGFOOD_VARS_FILENAME } = await loadLib()
-    const id = normalizeCommandIdentity(GOOD_CMD)
+    const id = normalizeCommandIdentity(GOOD_CMD, {
+      cwd: 'C:/repo/worker/.dogfood-runtime'
+    })
     expect(id.wranglerEntry).toMatch(/\/wrangler\/bin\/wrangler\.js$/)
     expect(id.hasLocalFlag).toBe(true)
     expect(id.envFile).toBe(DOGFOOD_VARS_FILENAME)

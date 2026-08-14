@@ -197,7 +197,7 @@ export async function runFailureProbes(opts) {
     // —— (b) Worker 중단 (identity kill only) ——
     try {
       await installRequestProbe(side)
-      const pid = killOwnedProcessTree(PID_PATH)
+      const pid = await killOwnedProcessTree(PID_PATH)
       await waitWorkerDown(15000, seenUrls)
       await side.evaluate(async (key) => {
         await chrome.storage.local.set({ [key]: 7 })
