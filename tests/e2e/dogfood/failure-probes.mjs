@@ -1,23 +1,26 @@
 /**
- * dogfood failure probes (4종).
+ * dogfood failure probes (4종) — R2 hardened.
  * 순서: 동의 취소 → invalid token → 삭제 후 접근 → Worker 중단(마지막).
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import {
+  assertAllowedDogfoodRequestUrl,
+  assertInvalidTokenRetrySequence,
+  assertMcpToolNotFound,
   assertNoProductionUrl,
-  LOCAL_UPLOAD_ENDPOINT
+  assertProcessIdentityMatch,
+  LOCAL_UPLOAD_ENDPOINT,
+  parsePidMeta,
+  stripSecretsForLog
 } from '../../../scripts/dogfood/lib.mjs'
 import { encodeMarkerToPng } from './fixtures/marker.mjs'
 import {
-  assertCapturesPostRetryBudget,
   assertExplicitFailureMessage,
-  assertGenericNotFound,
   assertZeroWorkerRequests,
-  countCapturesPosts,
   countProductionUrls
 } from './lib/failure-probe-logic.mjs'
 
@@ -38,11 +41,6 @@ const INVALID_TOKEN = 'sc_AAAAAAAAAAAAAAAAAAAAAA.BBBBBBBBBBBBBBBBBBBBBB'
  *   userToken: string,
  *   piUrl: string
  * }} opts
- * @returns {Promise<{
- *   ok: boolean,
- *   results: { name: string, pass: boolean, detail?: string }[],
- *   seenUrls: string[]
- * }>}
  */
 export async function runFailureProbes(opts) {
   /** @type {{ name: string, pass: boolean, detail?: string }[]} */
@@ -72,6 +70,11 @@ export async function runFailureProbes(opts) {
       '--no-first-run'
     ]
   })
+  context.on('request', (req) => {
+    const url = req.url()
+    seenUrls.push(url)
+    assertAllowedDogfoodRequestUrl(url, 'playwright-request')
+  })
 
   try {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -85,7 +88,7 @@ export async function runFailureProbes(opts) {
     })
     await side.waitForTimeout(500)
 
-    // —— (a) 동의 취소 → Worker 요청 0건 ——
+    // —— (a) 동의 취소 ——
     await side.evaluate(async (key) => {
       await chrome.storage.local.remove(key)
     }, CONSENT_KEY)
@@ -105,15 +108,11 @@ export async function runFailureProbes(opts) {
         assertZeroWorkerRequests(reqs)
         logProbe('동의 취소', true, 'Worker 요청 0건')
       } catch (err) {
-        logProbe(
-          '동의 취소',
-          false,
-          err instanceof Error ? err.message : String(err)
-        )
+        logProbe('동의 취소', false, err instanceof Error ? err.message : String(err))
       }
     }
 
-    // —— (c) invalid token → 401 후 재시도 1회 한도 ——
+    // —— (c) invalid token 시퀀스 ——
     await side.evaluate(
       async ({ tokenKey, token, consentKey }) => {
         await chrome.storage.local.set({
@@ -126,16 +125,12 @@ export async function runFailureProbes(opts) {
     await installRequestProbe(side)
     await injectCapture(sw, side, 'probe-invalid-token')
     await side.getByRole('button', { name: '내 AI에 저장' }).click()
-    await side.waitForTimeout(2500)
+    await side.waitForTimeout(3000)
     const tokenReqs = await readReqs(side)
     for (const r of tokenReqs) seenUrls.push(r.url)
     try {
-      const posts = countCapturesPosts(tokenReqs)
-      assertCapturesPostRetryBudget(posts)
-      if (posts < 1) {
-        throw new Error(`/captures POST가 없다 (invalid token 경로 미실행)`)
-      }
-      logProbe('invalid token 재시도 한도', true, `/captures POST=${posts}`)
+      assertInvalidTokenRetrySequence(tokenReqs)
+      logProbe('invalid token 재시도 한도', true, '401→/token→POST 시퀀스 OK')
     } catch (err) {
       logProbe(
         'invalid token 재시도 한도',
@@ -144,7 +139,7 @@ export async function runFailureProbes(opts) {
       )
     }
 
-    // —— (d) 삭제 후 접근 → NOT_FOUND ——
+    // —— (d) 삭제 후 NOT_FOUND ——
     try {
       const init = await mcpPost(opts.userToken, {
         jsonrpc: '2.0',
@@ -175,8 +170,7 @@ export async function runFailureProbes(opts) {
         },
         sessionId
       )
-      const text = extractToolText(analyze.json) + JSON.stringify(analyze.json)
-      assertGenericNotFound(text)
+      assertMcpToolNotFound(analyze.json)
       const piRes = await fetch(opts.piUrl)
       seenUrls.push(opts.piUrl)
       if (piRes.status === 200) {
@@ -195,9 +189,10 @@ export async function runFailureProbes(opts) {
       )
     }
 
-    // —— (b) Worker 중단 → 명시적 실패 (마지막) ——
+    // —— (b) Worker 중단 (identity kill only) ——
     try {
-      const pid = killWranglerPid()
+      await installRequestProbe(side)
+      const pid = killWranglerWithIdentity()
       await waitWorkerDown(15000)
       await side.evaluate(async (key) => {
         await chrome.storage.local.set({ [key]: 7 })
@@ -205,7 +200,6 @@ export async function runFailureProbes(opts) {
       await injectCapture(sw, side, 'probe-worker-down')
       const saveBtn = side.getByRole('button', { name: '내 AI에 저장' })
       await saveBtn.waitFor({ state: 'visible', timeout: 5000 })
-      // 이전 저장 in-flight 가 끝날 때까지 대기 (saving 가드가 클릭을 삼키지 않게)
       await side.waitForFunction(() => {
         const buttons = Array.from(document.querySelectorAll('button'))
         const target = buttons.find((b) => (b.textContent ?? '').includes('내 AI에 저장'))
@@ -220,6 +214,8 @@ export async function runFailureProbes(opts) {
       await errorToast.waitFor({ state: 'visible', timeout: 20000 })
       const toastText = (await errorToast.textContent()) ?? ''
       assertExplicitFailureMessage(toastText)
+      const downReqs = await readReqs(side)
+      for (const r of downReqs) seenUrls.push(r.url)
       const infoToasts = await side.locator('.toast--info').allTextContents()
       if (infoToasts.some((t) => /저장했습니다/.test(t))) {
         throw new Error('Worker 중단인데 성공 토스트가 표시됨')
@@ -238,12 +234,12 @@ export async function runFailureProbes(opts) {
     writeFileSync(
       logPath,
       JSON.stringify(
-        {
+        stripSecretsForLog({
           at: new Date().toISOString(),
           results,
           deletedCaptureId: opts.deletedCaptureId,
           productionUrlCount: countProductionUrls(seenUrls)
-        },
+        }),
         null,
         2
       ),
@@ -251,8 +247,7 @@ export async function runFailureProbes(opts) {
     )
     console.log(`[probe] 로그 저장: ${logPath}`)
 
-    const ok = results.every((r) => r.pass)
-    return { ok, results, seenUrls }
+    return { ok: results.every((r) => r.pass), results, seenUrls }
   } finally {
     await context.close()
   }
@@ -289,24 +284,30 @@ async function injectCapture(sw, side, sourceTitle) {
 async function installRequestProbe(side) {
   await side.evaluate(() => {
     window.__dogfoodReqs = []
-    if (window.__dogfoodFetchPatched) return
+    if (window.__dogfoodFetchPatched) {
+      window.__dogfoodReqs = []
+      return
+    }
     const realFetch = window.fetch.bind(window)
     window.fetch = async (input, init = {}) => {
       const url = typeof input === 'string' ? input : input.url
       const method = (init.method ?? 'GET').toUpperCase()
-      window.__dogfoodReqs.push({ url, method })
-      return realFetch(input, init)
+      try {
+        const res = await realFetch(input, init)
+        window.__dogfoodReqs.push({ url, method, status: res.status })
+        return res
+      } catch (err) {
+        window.__dogfoodReqs.push({ url, method, status: 0 })
+        throw err
+      }
     }
     window.__dogfoodFetchPatched = true
-  })
-  await side.evaluate(() => {
-    window.__dogfoodReqs = []
   })
 }
 
 /** @param {import('playwright').Page} side */
 async function readReqs(side) {
-  return /** @type {{ url: string, method: string }[]} */ (
+  return /** @type {{ url: string, method: string, status?: number }[]} */ (
     await side.evaluate(() => window.__dogfoodReqs ?? [])
   )
 }
@@ -340,58 +341,53 @@ async function mcpPost(token, body, sessionId = null) {
   return { status: res.status, sessionId: res.headers.get('mcp-session-id'), json, text }
 }
 
-function extractToolText(json) {
-  if (json && typeof json === 'object' && !Array.isArray(json)) {
-    const result = /** @type {Record<string, unknown>} */ (json).result
-    if (result && typeof result === 'object') {
-      const content = /** @type {Record<string, unknown>} */ (result).content
-      if (Array.isArray(content)) {
-        return content
-          .filter((c) => c && typeof c === 'object' && 'text' in c)
-          .map((c) => String(/** @type {{ text: unknown }} */ (c).text))
-          .join('\n')
-      }
-    }
-  }
-  return typeof json === 'string' ? json : JSON.stringify(json)
-}
-
-function killWranglerPid() {
+/**
+ * identity 검증 후 해당 process tree 만 종료. 포트 전체 Force kill 금지.
+ */
+function killWranglerWithIdentity() {
   if (!existsSync(PID_PATH)) {
     throw new Error(`wrangler PID 파일 없음: ${PID_PATH}`)
   }
-  const pid = Number(readFileSync(PID_PATH, 'utf8').trim())
-  if (!Number.isInteger(pid) || pid <= 0) {
-    throw new Error(`잘못된 wrangler PID: ${pid}`)
-  }
+  const meta = parsePidMeta(readFileSync(PID_PATH, 'utf8'))
+  const live = readLiveProcess(meta.pid)
+  assertProcessIdentityMatch(meta, live)
   try {
-    execFileSync('taskkill', ['/F', '/T', '/PID', String(pid)], {
+    execFileSync('taskkill', ['/F', '/T', '/PID', String(meta.pid)], {
       stdio: 'ignore'
     })
   } catch {
     try {
-      process.kill(pid)
+      process.kill(meta.pid)
     } catch (err) {
       throw new Error(
-        `wrangler 종료 실패 pid=${pid}: ${err instanceof Error ? err.message : err}`
+        `wrangler 종료 실패 pid=${meta.pid}: ${err instanceof Error ? err.message : err}`
       )
     }
   }
-  // 포트 점유 잔존 프로세스까지 정리 (detached workerd)
+  unlinkSync(PID_PATH)
+  return meta.pid
+}
+
+/**
+ * @param {number} pid
+ * @returns {{ pid: number, cmd: string } | null}
+ */
+function readLiveProcess(pid) {
   try {
-    execFileSync(
+    const out = execFileSync(
       'powershell',
       [
         '-NoProfile',
         '-Command',
-        `Get-NetTCPConnection -LocalPort 8787 -ErrorAction SilentlyContinue | ForEach-Object { if ($_.OwningProcess -gt 0) { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } }`
+        `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"; if ($null -eq $p) { '' } else { $p.CommandLine }`
       ],
-      { stdio: 'ignore' }
-    )
+      { encoding: 'utf8' }
+    ).trim()
+    if (!out) return null
+    return { pid, cmd: out }
   } catch {
-    // 포트가 이미 비었으면 무시 — waitWorkerDown 이 최종 판정한다
+    return null
   }
-  return pid
 }
 
 /** @param {number} timeoutMs */
@@ -413,8 +409,6 @@ const isDirectRun =
   resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])
 
 if (isDirectRun) {
-  console.error(
-    '[probe] 직접 실행 시 deletedCaptureId/userToken/piUrl 이 필요하다. pnpm dogfood:verify 를 사용하라.'
-  )
+  console.error('[probe] pnpm dogfood:verify 로 실행하라.')
   process.exitCode = 1
 }

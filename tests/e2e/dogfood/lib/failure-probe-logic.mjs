@@ -1,22 +1,39 @@
 /**
- * dogfood failure-probe 순수 로직 (카운터 · 재시도 한도 · 실패 메시지 · 요약).
+ * dogfood failure-probe 순수 로직.
+ * decideTokenRetry 복제 없음 — assertInvalidTokenRetrySequence(공유) 사용.
  */
-import { assertNoProductionUrl, LOCAL_UPLOAD_ENDPOINT } from '../../../../scripts/dogfood/lib.mjs'
+import {
+  assertAllowedDogfoodRequestUrl,
+  assertInvalidTokenRetrySequence,
+  assertLogHasNoUserToken,
+  assertMcpToolNotFound,
+  assertNoProductionUrl,
+  isAllowedDogfoodRequestUrl,
+  LOCAL_UPLOAD_ENDPOINT,
+  stripSecretsForLog
+} from '../../../../scripts/dogfood/lib.mjs'
 
-/** 401 이후 토큰 재발급 재시도 최대 횟수 (saveCaptureWithToken 계약) */
+export {
+  assertInvalidTokenRetrySequence,
+  assertMcpToolNotFound,
+  stripSecretsForLog,
+  assertLogHasNoUserToken,
+  isAllowedDogfoodRequestUrl,
+  assertAllowedDogfoodRequestUrl
+}
+
 export const MAX_TOKEN_RETRIES = 1
 
 /**
  * @param {{ url: string, method?: string }[]} requests
  * @param {string} [baseUrl]
- * @returns {number}
  */
 export function countWorkerRequests(requests, baseUrl = LOCAL_UPLOAD_ENDPOINT) {
   assertNoProductionUrl(baseUrl, 'worker-base')
   const normalized = baseUrl.replace(/\/$/, '')
   return requests.filter((r) => {
     if (typeof r?.url !== 'string') return false
-    assertNoProductionUrl(r.url, 'request-url')
+    assertAllowedDogfoodRequestUrl(r.url, 'request-url')
     return r.url.startsWith(normalized)
   }).length
 }
@@ -24,24 +41,21 @@ export function countWorkerRequests(requests, baseUrl = LOCAL_UPLOAD_ENDPOINT) {
 /**
  * @param {{ url: string, method?: string }[]} requests
  * @param {string} [baseUrl]
- * @returns {number}
  */
 export function countCapturesPosts(requests, baseUrl = LOCAL_UPLOAD_ENDPOINT) {
   assertNoProductionUrl(baseUrl, 'worker-base')
   const normalized = baseUrl.replace(/\/$/, '')
   return requests.filter((r) => {
     if (typeof r?.url !== 'string') return false
-    assertNoProductionUrl(r.url, 'request-url')
+    assertAllowedDogfoodRequestUrl(r.url, 'request-url')
     const method = (r.method ?? 'GET').toUpperCase()
     return method === 'POST' && r.url.startsWith(`${normalized}/captures`)
   }).length
 }
 
 /**
- * 동의 취소 후 Worker 요청이 0건인지 검증.
  * @param {{ url: string }[]} requests
  * @param {string} [baseUrl]
- * @returns {number}
  */
 export function assertZeroWorkerRequests(requests, baseUrl = LOCAL_UPLOAD_ENDPOINT) {
   const n = countWorkerRequests(requests, baseUrl)
@@ -53,7 +67,6 @@ export function assertZeroWorkerRequests(requests, baseUrl = LOCAL_UPLOAD_ENDPOI
 
 /**
  * @param {string} message
- * @returns {boolean}
  */
 export function isSoftSuccessMessage(message) {
   if (typeof message !== 'string') return false
@@ -61,7 +74,6 @@ export function isSoftSuccessMessage(message) {
 }
 
 /**
- * 조용한 성공/fallback 없이 명시적 실패 문구인지 검증.
  * @param {string} message
  */
 export function assertExplicitFailureMessage(message) {
@@ -77,58 +89,8 @@ export function assertExplicitFailureMessage(message) {
 }
 
 /**
- * 401 재시도 정책: 최대 1회만 retry.
- * @param {{ status: number, retriesUsed: number, maxRetries?: number }} input
- * @returns {{ action: 'retry' | 'stop', retriesUsed: number }}
- */
-export function decideTokenRetry(input) {
-  const maxRetries = input.maxRetries ?? MAX_TOKEN_RETRIES
-  if (input.status !== 401) {
-    return { action: 'stop', retriesUsed: input.retriesUsed }
-  }
-  if (input.retriesUsed >= maxRetries) {
-    return { action: 'stop', retriesUsed: input.retriesUsed }
-  }
-  return { action: 'retry', retriesUsed: input.retriesUsed + 1 }
-}
-
-/**
- * /captures POST 횟수가 (최초 1 + 재시도 한도)를 넘으면 무한 재시도로 본다.
- * @param {number} postCount
- * @param {number} [maxRetries]
- */
-export function assertCapturesPostRetryBudget(postCount, maxRetries = MAX_TOKEN_RETRIES) {
-  if (!Number.isInteger(postCount) || postCount < 0) {
-    throw new Error(`POST 횟수가 정수여야 한다: ${postCount}`)
-  }
-  const maxAllowed = 1 + maxRetries
-  if (postCount > maxAllowed) {
-    throw new Error(
-      `토큰 재시도 한도 초과: /captures POST ${postCount}회 > 최대 ${maxAllowed}회`
-    )
-  }
-}
-
-/**
- * @param {string} text
- * @returns {boolean}
- */
-export function isGenericNotFound(text) {
-  return typeof text === 'string' && /\bNOT_FOUND\b/.test(text)
-}
-
-/**
- * @param {string} text
- */
-export function assertGenericNotFound(text) {
-  if (!isGenericNotFound(text)) {
-    throw new Error(`generic NOT_FOUND 아님: ${String(text).slice(0, 200)}`)
-  }
-}
-
-/**
  * @param {{ name: string, pass: boolean, detail?: string }[]} results
- * @returns {{ total: number, passed: number, failed: number, ok: boolean, productionRequestCount: number }}
+ * @param {number} [productionRequestCount]
  */
 export function summarizeVerifyResults(results, productionRequestCount = 0) {
   const passed = results.filter((r) => r.pass).length
@@ -147,16 +109,12 @@ export function summarizeVerifyResults(results, productionRequestCount = 0) {
 
 /**
  * @param {string[]} urls
- * @returns {number} production URL 건수
  */
 export function countProductionUrls(urls) {
   let n = 0
   for (const url of urls) {
     if (typeof url !== 'string') continue
-    const lower = url.toLowerCase()
-    if (lower.includes('workers.dev') || lower.includes('cloudflareworkers.com')) {
-      n += 1
-    }
+    if (!isAllowedDogfoodRequestUrl(url)) n += 1
   }
   return n
 }

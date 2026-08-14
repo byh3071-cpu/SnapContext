@@ -74,6 +74,21 @@ export default {
   ): Promise<Response> {
     const url = new URL(req.url)
 
+    // dogfood 부트 정체 확인 — DOGFOOD_BOOT_NONCE 미설정 시 일반 404와 동일
+    if (req.method === 'GET' && url.pathname === '/dogfood-health') {
+      const expected = env.DOGFOOD_BOOT_NONCE
+      const given = url.searchParams.get('nonce')
+      if (
+        expected !== undefined &&
+        expected.length > 0 &&
+        given !== null &&
+        given === expected
+      ) {
+        return jsonResponse({ ok: true, dogfood: true })
+      }
+      return textResponse('Not found', 404)
+    }
+
     // MCP 분기 우선 — 전역 OPTIONS 보다 먼저 (MAJOR-1). Origin 불일치는 OPTIONS 포함 403
     if (url.pathname === '/mcp') {
       const originDenied = rejectInvalidOrigin(req)

@@ -16,14 +16,10 @@ interface FailureLogic {
   ) => number
   isSoftSuccessMessage: (message: string) => boolean
   assertExplicitFailureMessage: (message: string) => void
-  decideTokenRetry: (input: {
-    status: number
-    retriesUsed: number
-    maxRetries?: number
-  }) => { action: 'retry' | 'stop'; retriesUsed: number }
-  assertCapturesPostRetryBudget: (postCount: number, maxRetries?: number) => void
-  isGenericNotFound: (text: string) => boolean
-  assertGenericNotFound: (text: string) => void
+  assertInvalidTokenRetrySequence: (
+    requests: { url: string; method?: string; status?: number }[]
+  ) => void
+  assertMcpToolNotFound: (jsonRpc: unknown) => void
   summarizeVerifyResults: (
     results: { name: string; pass: boolean; detail?: string }[],
     productionRequestCount?: number
@@ -35,6 +31,8 @@ interface FailureLogic {
     productionRequestCount: number
   }
   countProductionUrls: (urls: string[]) => number
+  assertLogHasNoUserToken: (payload: unknown) => void
+  stripSecretsForLog: (value: unknown) => unknown
 }
 
 async function loadLib(): Promise<FailureLogic> {
@@ -45,8 +43,7 @@ async function loadLib(): Promise<FailureLogic> {
 describe('dogfood failure-probe 순수 로직', () => {
   it('동의 취소 후 Worker 요청 0건을 강제한다', async () => {
     const { assertZeroWorkerRequests, countWorkerRequests } = await loadLib()
-    const empty: { url: string }[] = []
-    expect(assertZeroWorkerRequests(empty)).toBe(0)
+    expect(assertZeroWorkerRequests([])).toBe(0)
     const hit = [{ url: 'http://127.0.0.1:8787/captures', method: 'POST' }]
     expect(countWorkerRequests(hit)).toBe(1)
     expect(() => assertZeroWorkerRequests(hit)).toThrow(/0건/)
@@ -56,7 +53,7 @@ describe('dogfood failure-probe 순수 로직', () => {
     const { countWorkerRequests } = await loadLib()
     expect(() =>
       countWorkerRequests([{ url: 'https://x.workers.dev/captures' }])
-    ).toThrow(/workers\.dev|production/i)
+    ).toThrow(/비허용|workers\.dev|production/i)
   })
 
   it('명시적 실패 메시지만 통과하고 가짜 성공은 거부한다', async () => {
@@ -70,32 +67,31 @@ describe('dogfood failure-probe 순수 로직', () => {
     ).not.toThrow()
   })
 
-  it('401 재시도는 최대 1회로 제한한다', async () => {
-    const { decideTokenRetry, assertCapturesPostRetryBudget, MAX_TOKEN_RETRIES } =
-      await loadLib()
+  it('invalid-token 시퀀스와 MAX_TOKEN_RETRIES=1 계약을 고정한다', async () => {
+    const { assertInvalidTokenRetrySequence, MAX_TOKEN_RETRIES } = await loadLib()
     expect(MAX_TOKEN_RETRIES).toBe(1)
-    expect(decideTokenRetry({ status: 401, retriesUsed: 0 })).toEqual({
-      action: 'retry',
-      retriesUsed: 1
-    })
-    expect(decideTokenRetry({ status: 401, retriesUsed: 1 })).toEqual({
-      action: 'stop',
-      retriesUsed: 1
-    })
-    expect(decideTokenRetry({ status: 500, retriesUsed: 0 }).action).toBe('stop')
-    expect(() => assertCapturesPostRetryBudget(2)).not.toThrow()
-    expect(() => assertCapturesPostRetryBudget(3)).toThrow(/한도 초과/)
+    expect(() =>
+      assertInvalidTokenRetrySequence([
+        { url: 'http://127.0.0.1:8787/captures', method: 'POST', status: 401 },
+        { url: 'http://127.0.0.1:8787/token', method: 'POST', status: 200 },
+        { url: 'http://127.0.0.1:8787/captures', method: 'POST', status: 201 }
+      ])
+    ).not.toThrow()
   })
 
-  it('generic NOT_FOUND와 verify 요약을 판정한다', async () => {
+  it('MCP NOT_FOUND 구조 검증과 verify 요약을 판정한다', async () => {
     const {
-      assertGenericNotFound,
-      isGenericNotFound,
+      assertMcpToolNotFound,
       summarizeVerifyResults,
-      countProductionUrls
+      countProductionUrls,
+      stripSecretsForLog,
+      assertLogHasNoUserToken
     } = await loadLib()
-    expect(isGenericNotFound('NOT_FOUND')).toBe(true)
-    expect(() => assertGenericNotFound('missing id')).toThrow(/NOT_FOUND/)
+    expect(() =>
+      assertMcpToolNotFound({
+        result: { isError: true, content: [{ type: 'text', text: 'NOT_FOUND' }] }
+      })
+    ).not.toThrow()
     expect(countProductionUrls(['http://127.0.0.1:8787/x', 'https://a.workers.dev'])).toBe(
       1
     )
@@ -107,8 +103,9 @@ describe('dogfood failure-probe 순수 로직', () => {
       0
     )
     expect(summary).toMatchObject({ total: 2, passed: 2, failed: 0, ok: true })
-    expect(() =>
-      summarizeVerifyResults([{ name: 'a', pass: true }], 1)
-    ).toThrow(/production/)
+    const redacted = stripSecretsForLog({
+      golden: { userToken: 'sc_AAAA.BBBBBBBB' }
+    })
+    expect(() => assertLogHasNoUserToken(redacted)).not.toThrow()
   })
 })

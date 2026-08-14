@@ -8,8 +8,13 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import {
+  assertAllowedDogfoodRequestUrl,
+  assertMcpToolNotFound,
   assertNoProductionUrl,
-  LOCAL_UPLOAD_ENDPOINT
+  dogfoodHealthUrl,
+  LOCAL_UPLOAD_ENDPOINT,
+  parseDevVars,
+  stripSecretsForLog
 } from '../../../scripts/dogfood/lib.mjs'
 import {
   decodeMarkerFromPng,
@@ -44,18 +49,28 @@ function fail(name, detail) {
 
 async function assertWorkerUp() {
   assertNoProductionUrl(LOCAL_UPLOAD_ENDPOINT, 'LOCAL_UPLOAD_ENDPOINT')
+  const varsPath = resolve(ROOT, 'worker', '.dev.vars.dogfood')
+  if (!existsSync(varsPath)) {
+    throw new Error('worker/.dev.vars.dogfood 없음 — 먼저 pnpm dogfood:up')
+  }
+  const vars = parseDevVars(readFileSync(varsPath, 'utf8'))
+  const url = dogfoodHealthUrl(vars.DOGFOOD_BOOT_NONCE)
   let res
   try {
-    res = await fetch(`${LOCAL_UPLOAD_ENDPOINT}/`, { method: 'GET' })
+    res = await fetch(url, { method: 'GET' })
   } catch (err) {
     throw new Error(
-      `로컬 Worker 미기동 (${LOCAL_UPLOAD_ENDPOINT}). 먼저 pnpm dogfood:up 실행. ${err instanceof Error ? err.message : err}`
+      `로컬 Worker 미기동 (${url}). 먼저 pnpm dogfood:up 실행. ${err instanceof Error ? err.message : err}`
     )
   }
-  if (!(res.status > 0)) {
-    throw new Error('로컬 Worker 헬스체크 실패')
+  if (res.status !== 200) {
+    throw new Error(`dogfood 헬스체크 실패 status=${res.status}`)
   }
-  logStep('로컬 Worker 헬스체크', true, `status=${res.status}`)
+  const body = /** @type {{ ok?: boolean, dogfood?: boolean }} */ (await res.json())
+  if (body.ok !== true || body.dogfood !== true) {
+    throw new Error(`dogfood 헬스 본문 불일치: ${JSON.stringify(body)}`)
+  }
+  logStep('로컬 Worker 헬스체크', true, 'dogfood-health')
 }
 
 /**
@@ -186,15 +201,27 @@ function writeLog(extra = {}) {
   mkdirSync(LOG_DIR, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const path = join(LOG_DIR, `golden-${stamp}.json`)
-  const payload = {
+  const payload = stripSecretsForLog({
     at: new Date().toISOString(),
     endpoint: LOCAL_UPLOAD_ENDPOINT,
     steps,
     ...extra
-  }
+  })
   writeFileSync(path, JSON.stringify(payload, null, 2), 'utf8')
   console.log(`[golden] 로그 저장: ${path}`)
   return path
+}
+
+/**
+ * @param {import('playwright').BrowserContext} context
+ * @param {string[]} seenUrls
+ */
+function installNetworkGuard(context, seenUrls) {
+  context.on('request', (req) => {
+    const url = req.url()
+    seenUrls.push(url)
+    assertAllowedDogfoodRequestUrl(url, 'playwright-request')
+  })
 }
 
 /**
@@ -229,7 +256,8 @@ export async function runGoldenPath() {
   await assertWorkerUp()
   const fixture = await writeMarkerFixture(FIXTURE_OUT)
   marker = fixture.marker
-  logStep('marker fixture 생성', true, `marker=${fixture.marker}`)
+  // N2: 정답 marker 는 픽셀 판독 비교 전에 콘솔/로그에 노출하지 않는다
+  logStep('marker fixture 생성', true, 'pixel-only (정답 미공개)')
 
   const fixtureServer = await serveFixtureDir(FIXTURE_OUT)
   seenUrls.push(fixtureServer.baseUrl)
@@ -245,6 +273,7 @@ export async function runGoldenPath() {
       '--no-first-run'
     ]
   })
+  installNetworkGuard(context, seenUrls)
 
   try {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -384,9 +413,10 @@ export async function runGoldenPath() {
     }
     const decoded = await decodeMarkerFromPng(piBuf)
     if (decoded !== fixture.marker) {
-      fail('픽셀 marker 복원', `expected=${fixture.marker} got=${decoded}`)
+      fail('픽셀 marker 복원', 'mismatch (정답은 비교 후에만 기록)')
     }
-    logStep('/pi PNG + marker 픽셀 복원', true, decoded)
+    // N2: 비교 성공 후에만 사람이 보는 결과에 marker 노출
+    logStep('/pi PNG + marker 픽셀 복원', true, `marker=${decoded}`)
 
     const del = await fetch(
       `${LOCAL_UPLOAD_ENDPOINT}/captures/${encodeURIComponent(captureId)}`,
@@ -411,14 +441,17 @@ export async function runGoldenPath() {
       },
       sessionId
     )
-    const afterText = extractToolText(after.json)
-    const afterBlob = JSON.stringify(after.json)
-    if (!/NOT_FOUND/.test(afterText) && !/NOT_FOUND/.test(afterBlob)) {
-      fail('삭제 후 NOT_FOUND', afterText.slice(0, 300))
+    try {
+      assertMcpToolNotFound(after.json)
+    } catch (err) {
+      fail(
+        '삭제 후 NOT_FOUND',
+        err instanceof Error ? err.message : String(err)
+      )
     }
     logStep('삭제 후 snap_analyze NOT_FOUND', true)
 
-    writeLog({ marker: fixture.marker, captureId, piUrl })
+    writeLog({ marker: fixture.marker, captureId, piUrl, markerMatch: true })
     const failed = steps.filter((s) => !s.pass)
     if (failed.length > 0) {
       console.error(`[golden] 실패 ${failed.length}건`)
@@ -445,9 +478,9 @@ export async function runGoldenPath() {
   } catch (err) {
     logStep('fatal', false, err instanceof Error ? err.message : String(err))
     writeLog({
-      marker: fixture.marker,
       captureId,
-      error: err instanceof Error ? err.message : String(err)
+      error: err instanceof Error ? err.message : String(err),
+      markerRevealed: false
     })
     console.error('[golden] fatal:', err)
     return {

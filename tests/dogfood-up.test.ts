@@ -3,14 +3,16 @@ import { describe, expect, it } from 'vitest'
 interface DogfoodLib {
   BOOTSTRAP_STEPS: readonly string[]
   LOCAL_UPLOAD_ENDPOINT: string
+  DOGFOOD_VARS_FILENAME: string
   assertLocalUploadEndpoint: (url: string) => void
   assertNoProductionUrl: (value: string, label?: string) => void
   assembleViteBuildEnv: (
     baseEnv?: Record<string, string | undefined>
   ) => Record<string, string | undefined>
-  buildDevVarsContent: (secrets: {
+  buildDogfoodDevVarsContent: (secrets: {
     TOKEN_SIGNING_SECRET: string
     SNAPCONTEXT_BEARER_TOKEN: string
+    DOGFOOD_BOOT_NONCE: string
   }) => string
   generateLocalSecrets: (randomHexFn?: () => string) => {
     TOKEN_SIGNING_SECRET: string
@@ -18,10 +20,9 @@ interface DogfoodLib {
   }
   parseDevVars: (text: string) => Record<string, string>
   resolveWranglerDevArgs: () => string[]
-  validateExistingDevVars: (vars: Record<string, string>) => void
+  validateDogfoodDevVars: (vars: Record<string, string>) => void
 }
 
-/** 비리터럴 specifier → tsc 모듈 해석 우회, vitest 런타임 resolve */
 async function loadLib(): Promise<DogfoodLib> {
   const specifier = '../scripts/dogfood/lib.mjs'
   return (await import(specifier)) as DogfoodLib
@@ -63,12 +64,15 @@ describe('dogfood-up 가드', () => {
 })
 
 describe('dogfood-up env 조립', () => {
-  it('시크릿을 .dev.vars 형식으로 직렬화한다', async () => {
-    const { buildDevVarsContent } = await loadLib()
-    const body = buildDevVarsContent({
+  it('시크릿을 dogfood vars 형식으로 직렬화한다', async () => {
+    const { buildDogfoodDevVarsContent, DOGFOOD_VARS_FILENAME } = await loadLib()
+    expect(DOGFOOD_VARS_FILENAME).toBe('.dev.vars.dogfood')
+    const body = buildDogfoodDevVarsContent({
       TOKEN_SIGNING_SECRET: 'sign-secret',
-      SNAPCONTEXT_BEARER_TOKEN: 'bearer-secret'
+      SNAPCONTEXT_BEARER_TOKEN: 'bearer-secret',
+      DOGFOOD_BOOT_NONCE: 'n'.repeat(32)
     })
+    expect(body).toContain('DOGFOOD_LOCAL=1')
     expect(body).toContain('TOKEN_SIGNING_SECRET=sign-secret')
     expect(body).toContain('SNAPCONTEXT_BEARER_TOKEN=bearer-secret')
     expect(body.endsWith('\n')).toBe(true)
@@ -96,18 +100,20 @@ describe('dogfood-up env 조립', () => {
     ).not.toThrow()
   })
 
-  it('기존 .dev.vars에 production URL이 있으면 throw 한다', async () => {
-    const { parseDevVars, validateExistingDevVars } = await loadLib()
+  it('dogfood vars 에 production URL이 있으면 throw 한다', async () => {
+    const { parseDevVars, validateDogfoodDevVars } = await loadLib()
     const parsed = parseDevVars(
-      'TOKEN_SIGNING_SECRET=abc\nSNAPCONTEXT_BEARER_TOKEN=https://x.workers.dev/token\n'
+      'DOGFOOD_LOCAL=1\nDOGFOOD_BOOT_NONCE=nnnnnnnnnnnnnnnn\nTOKEN_SIGNING_SECRET=abc\nSNAPCONTEXT_BEARER_TOKEN=https://x.workers.dev/token\n'
     )
-    expect(() => validateExistingDevVars(parsed)).toThrow(/workers\.dev|production/i)
+    expect(() => validateDogfoodDevVars(parsed)).toThrow(/workers\.dev|production/i)
   })
 
-  it('기존 .dev.vars에 필수 키가 없으면 throw 한다 (조용한 보완 금지)', async () => {
-    const { parseDevVars, validateExistingDevVars } = await loadLib()
-    const parsed = parseDevVars('TOKEN_SIGNING_SECRET=only-one\n')
-    expect(() => validateExistingDevVars(parsed)).toThrow(/SNAPCONTEXT_BEARER_TOKEN/)
+  it('dogfood vars 에 필수 키가 없으면 throw 한다', async () => {
+    const { parseDevVars, validateDogfoodDevVars } = await loadLib()
+    const parsed = parseDevVars(
+      'DOGFOOD_LOCAL=1\nDOGFOOD_BOOT_NONCE=nnnnnnnnnnnnnnnn\nTOKEN_SIGNING_SECRET=only-one\n'
+    )
+    expect(() => validateDogfoodDevVars(parsed)).toThrow(/SNAPCONTEXT_BEARER_TOKEN/)
   })
 })
 
@@ -115,20 +121,23 @@ describe('dogfood-up 순서', () => {
   it('부트스트랩 단계 순서는 고정이다', async () => {
     const { BOOTSTRAP_STEPS } = await loadLib()
     expect(BOOTSTRAP_STEPS).toEqual([
-      'ensureDevVars',
+      'assertPortFree',
+      'ensureDogfoodVars',
       'applyMigrations',
       'startWranglerDev',
-      'waitHealthcheck',
+      'waitDogfoodHealthcheck',
       'viteBuild',
       'prepareChromeProfile'
     ])
   })
 
-  it('wrangler dev는 127.0.0.1:8787 로컬만 가리킨다', async () => {
+  it('wrangler dev는 127.0.0.1:8787 로컬 + env-file 만 가리킨다', async () => {
     const { resolveWranglerDevArgs } = await loadLib()
     const args = resolveWranglerDevArgs()
     expect(args).toContain('127.0.0.1')
     expect(args).toContain('8787')
+    expect(args).toContain('--env-file')
+    expect(args).toContain('.dev.vars.dogfood')
     expect(args.join(' ')).not.toMatch(/workers\.dev/)
   })
 })
