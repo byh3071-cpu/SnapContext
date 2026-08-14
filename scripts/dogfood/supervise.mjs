@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * dogfood supervise — wrangler ChildProcess handle 소유 (V5 handle-only).
+ * dogfood supervise — wrangler ChildProcess handle 소유 (V6: natural-exit 공용 cleanup).
  */
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   buildCommandIdentityFromArgv,
@@ -13,11 +13,11 @@ import {
 } from './lib.mjs'
 import {
   listDescendantPids,
-  readLiveProcess,
-  terminateOwnedChildTree
+  readLiveProcess
 } from './process-own.mjs'
+import { cleanupOwnedChild, pollSuperviseOnce } from './supervise-lifecycle.mjs'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+export { cleanupOwnedChild, pollSuperviseOnce } from './supervise-lifecycle.mjs'
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
@@ -51,25 +51,7 @@ async function main() {
   let child = null
   /** @type {number[]} */
   let descendantPids = []
-  let cleaned = false
-
-  const cleanupOwned = async (reason) => {
-    if (cleaned || child == null) return
-    cleaned = true
-    console.error(`[dogfood:supervise] cleanup: ${reason}`)
-    await terminateOwnedChildTree({
-      child,
-      descendantPids,
-      pidPath
-    })
-    if (existsSync(stopPath)) {
-      try {
-        unlinkSync(stopPath)
-      } catch {
-        /* ignore */
-      }
-    }
-  }
+  const cleaned = { value: false }
 
   try {
     child = spawn(execPath, [wranglerJs, ...wranglerArgs], {
@@ -87,7 +69,7 @@ async function main() {
         live = readLiveProcess(child.pid)
         if (live != null) break
       } catch {
-        // 등록 전 — async 재시도
+        // 등록 전 - async 재시도
       }
       await sleep(50)
     }
@@ -112,54 +94,27 @@ async function main() {
     )
 
     while (true) {
-      // V5: child 종료 검사를 stop 파일보다 먼저
-      if (child.exitCode != null || child.signalCode != null) {
-        cleaned = true
-        if (existsSync(pidPath)) {
-          try {
-            unlinkSync(pidPath)
-          } catch {
-            /* ignore */
-          }
-        }
-        if (existsSync(stopPath)) {
-          try {
-            unlinkSync(stopPath)
-          } catch {
-            /* ignore */
-          }
-        }
-        return
-      }
-
-      if (existsSync(stopPath)) {
-        let req = null
-        try {
-          req = JSON.parse(readFileSync(stopPath, 'utf8'))
-        } catch {
-          console.error('[dogfood:supervise] stop 파일 파싱 실패 — 무시하고 계속')
-          await sleep(200)
-          continue
-        }
-        if (!req || req.nonce !== bootNonce) {
-          console.error('[dogfood:supervise] stop nonce 불일치 — 무시하고 계속')
-          try {
-            unlinkSync(stopPath)
-          } catch {
-            /* ignore */
-          }
-          await sleep(200)
-          continue
-        }
-        await cleanupOwned('stop-signal')
-        return
-      }
-      await sleep(200)
+      const step = await pollSuperviseOnce({
+        child,
+        descendantPids,
+        pidPath,
+        stopPath,
+        bootNonce,
+        cleaned
+      })
+      if (step === 'done') return
     }
   } finally {
-    if (!cleaned && child != null) {
+    if (!cleaned.value && child != null) {
       try {
-        await cleanupOwned('finally')
+        await cleanupOwnedChild({
+          child,
+          descendantPids,
+          pidPath,
+          stopPath,
+          cleaned,
+          reason: 'finally'
+        })
       } catch (cleanupErr) {
         console.error(
           '[dogfood:supervise] finally cleanup 실패:',
@@ -171,7 +126,15 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('[dogfood:supervise] 실패:', err instanceof Error ? err.message : err)
-  process.exitCode = 1
-})
+const isDirectRun = (() => {
+  const entry = process.argv[1]
+  if (!entry) return false
+  return fileURLToPath(import.meta.url).toLowerCase() === resolve(entry).toLowerCase()
+})()
+
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error('[dogfood:supervise] 실패:', err instanceof Error ? err.message : err)
+    process.exitCode = 1
+  })
+}

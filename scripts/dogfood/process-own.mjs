@@ -101,26 +101,23 @@ export function listDescendantPids(parentPid) {
 }
 
 /**
- * PowerShell 내부에서 empty → "no". JS 오류 메시지 문자열 매칭 없음.
- * cmdlet 실패는 runPowerShellStrict 가 throw.
+ * 성공 조회된 Listen 목록을 PS 안에서 port 필터 → empty 면 "no".
+ * ObjectNotFound→no 변환 없음. cmdlet/provider 오류는 전부 throw.
  * @param {number} [port]
  * @param {string} [host]
+ * @param {{ cmdlet?: string }} [opts] 테스트용 cmdlet 주입
  * @returns {boolean}
  */
-export function hasPortListener(port = LOCAL_PORT, host = LOCAL_HOST) {
+export function hasPortListener(port = LOCAL_PORT, host = LOCAL_HOST, opts = {}) {
+  const cmdlet = opts.cmdlet ?? 'Get-NetTCPConnection'
+  if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(cmdlet)) {
+    throw new Error(`hasPortListener 잘못된 cmdlet: ${cmdlet}`)
+  }
   const out = runPowerShellStrict(
     [
       `$port = ${port}`,
       `$hostAddr = '${host}'`,
-      `try {`,
-      `  $all = @(Get-NetTCPConnection -State Listen -ErrorAction Stop)`,
-      `} catch [Microsoft.PowerShell.Cmdletization.Cim.CimJobException] {`,
-      `  if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { Write-Output 'no'; return }`,
-      `  throw`,
-      `} catch {`,
-      `  if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { Write-Output 'no'; return }`,
-      `  throw`,
-      `}`,
+      `$all = @(${cmdlet} -State Listen -ErrorAction Stop)`,
       `$c = @($all | Where-Object {`,
       `  $_.LocalPort -eq $port -and (`,
       `    $_.LocalAddress -eq $hostAddr -or $_.LocalAddress -eq '0.0.0.0' -or $_.LocalAddress -eq '::'`,
