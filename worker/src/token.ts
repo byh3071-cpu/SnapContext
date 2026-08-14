@@ -4,7 +4,7 @@ type SubtleWithTiming = SubtleCrypto & {
   timingSafeEqual?: (a: BufferSource, b: BufferSource) => boolean
 }
 
-function timingSafeEqualBytes(a: Uint8Array, b: Uint8Array): boolean {
+export function timingSafeEqualBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.byteLength !== b.byteLength) return false
   const subtle = crypto.subtle as SubtleWithTiming
   if (typeof subtle.timingSafeEqual === 'function') {
@@ -20,7 +20,7 @@ function timingSafeEqualBytes(a: Uint8Array, b: Uint8Array): boolean {
 const B64URL =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
 
-function base64UrlEncode(bytes: Uint8Array): string {
+export function base64UrlEncode(bytes: Uint8Array): string {
   let out = ''
   for (let i = 0; i < bytes.length; i += 3) {
     const a = bytes[i]!
@@ -35,7 +35,7 @@ function base64UrlEncode(bytes: Uint8Array): string {
   return out
 }
 
-function base64UrlDecode(s: string): Uint8Array | null {
+export function base64UrlDecode(s: string): Uint8Array | null {
   if (s.length === 0 || !/^[A-Za-z0-9_-]+$/.test(s)) return null
   const lookup = new Map<string, number>()
   for (let i = 0; i < B64URL.length; i++) lookup.set(B64URL[i]!, i)
@@ -72,7 +72,7 @@ function bytesToHex(bytes: Uint8Array): string {
   return hex
 }
 
-async function importHmacKey(secret: string): Promise<CryptoKey> {
+export async function importHmacKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
@@ -82,13 +82,19 @@ async function importHmacKey(secret: string): Promise<CryptoKey> {
   )
 }
 
-async function hmacSha256First16(
+export async function hmacSha256(
   secret: string,
-  rand: Uint8Array
+  message: Uint8Array
 ): Promise<Uint8Array> {
   const key = await importHmacKey(secret)
-  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, rand))
-  return sig.slice(0, 16)
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, message))
+}
+
+export async function hmacSha256First16(
+  secret: string,
+  message: Uint8Array
+): Promise<Uint8Array> {
+  return (await hmacSha256(secret, message)).slice(0, 16)
 }
 
 /**

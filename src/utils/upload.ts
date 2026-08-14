@@ -1,70 +1,83 @@
-import type { SharedContext } from '../types'
+import type { SharedContextV2 } from '../types'
 
-/**
- * 보관 기간 allowlist — worker `EXPIRY_DAYS_ALLOWLIST`(worker/src/lib.ts)와 같은 값이어야 한다.
- * 서버가 최종 방어선이지만(범위 밖이면 400) 클라가 먼저 걸러야 사용자가 400 을 안 본다.
- */
 export const EXPIRY_DAYS_ALLOWLIST = [1, 7, 30] as const
 export type ExpiryDays = (typeof EXPIRY_DAYS_ALLOWLIST)[number]
 
-/** storage·UI 등 타입이 보장되지 않는 경로에서 넘어온 값을 좁힐 때 쓴다 */
 export function isExpiryDays(value: unknown): value is ExpiryDays {
-  if (typeof value !== 'number') return false
-  return EXPIRY_DAYS_ALLOWLIST.some((allowed) => allowed === value)
+  return (
+    typeof value === 'number' &&
+    EXPIRY_DAYS_ALLOWLIST.some((allowed) => allowed === value)
+  )
 }
 
-/**
- * HTTP 상태를 담은 업로드 실패. 호출측이 401(토큰 거부)만 따로 복구할 수 있어야 한다.
- * 메시지 포맷은 기존과 동일하게 유지한다.
- */
-export class UploadFailedError extends Error {
+export function sanitizeSourceUrlForUpload(raw: string): string {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new Error('페이지 주소를 해석할 수 없습니다.')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('페이지 주소는 http 또는 https여야 합니다.')
+  }
+  url.username = ''
+  url.password = ''
+  url.search = ''
+  url.hash = ''
+  return url.href
+}
+
+export class CaptureUploadError extends Error {
   readonly status: number
+
   constructor(status: number) {
-    super(`업로드 실패 (${status})`)
-    this.name = 'UploadFailedError'
+    super(`캡처 저장 실패 (${status})`)
+    this.name = 'CaptureUploadError'
     this.status = status
   }
 }
 
-/**
- * 서버가 bearer 토큰을 거부한 경우(=시크릿 로테이션·엔드포인트 전환).
- * 토큰을 폐기하고 익명으로 재시도해야 하는 유일한 신호다.
- */
-export function isUnauthorizedUploadError(error: unknown): boolean {
-  return error instanceof UploadFailedError && error.status === 401
+export function isUnauthorizedCaptureUploadError(error: unknown): boolean {
+  return error instanceof CaptureUploadError && error.status === 401
 }
 
-export type UploadShareOptions = {
-  /**
-   * ensureUserToken() 결과를 그대로 넘기면 된다(null 허용 = 발급 실패 시 익명 업로드).
-   * uploadShare 안에서 직접 발급하지 않는 이유: chrome API 에 묶이면 이 모듈이
-   * 순수 함수가 아니게 되고, chrome mock 없이 도는 기존 업로드 테스트가 전부 깨진다.
-   */
-  token?: string | null
-  /** 미지정 = 서버 기본(7일). 필드를 아예 안 보낸다 — 빈 문자열은 worker 가 400 으로 막는다. */
-  expiresInDays?: ExpiryDays
+export interface PrivateCaptureUploadOptions {
+  token: string | null
+  expiresInDays: ExpiryDays
 }
 
-/**
- * 캡처 PNG(+선택 컨텍스트)를 공유 worker에 업로드하고 공유 URL을 반환한다.
- * 엔드포인트는 빌드 타임 .env의 VITE_UPLOAD_ENDPOINT에서 읽는다.
- *
- * 응답에는 `{ id, url }` 뿐이라 만료 시각은 오지 않는다(ADR-013). 만료 표시가 필요하면
- * 호출측이 여기 넘긴 보관 기간으로 직접 계산해야 한다.
- */
-export async function uploadShare(
-  imageBlob: Blob,
-  context?: SharedContext,
-  options: UploadShareOptions = {}
-): Promise<string> {
-  const endpoint = import.meta.env.VITE_UPLOAD_ENDPOINT
-  if (!endpoint) {
-    throw new Error('업로드 엔드포인트가 설정되지 않았습니다.')
+export interface PrivateCaptureUploadResult {
+  id: string
+  expiresAt: string
+}
+
+function isPrivateCaptureUploadResult(
+  value: unknown
+): value is PrivateCaptureUploadResult {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false
   }
-  const { token, expiresInDays } = options
-  // 범위 밖 값을 기본값으로 슬쩍 바꾸면 사용자가 고른 보관 기간과 실제가 갈린다 →
-  // 조용히 치환하지 않고 네트워크 전에 드러낸다
-  if (expiresInDays !== undefined && !isExpiryDays(expiresInDays)) {
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.id === 'string' &&
+    record.id.length > 0 &&
+    typeof record.expiresAt === 'string' &&
+    Number.isFinite(Date.parse(record.expiresAt))
+  )
+}
+
+/** 공개 링크를 만들지 않고 현재 사용자 owner에 캡처를 저장한다. */
+export async function uploadPrivateCapture(
+  imageBlob: Blob,
+  context: SharedContextV2,
+  options: PrivateCaptureUploadOptions
+): Promise<PrivateCaptureUploadResult> {
+  const endpoint: string | undefined = import.meta.env.VITE_UPLOAD_ENDPOINT
+  if (!endpoint) throw new Error('캡처 저장 서버가 설정되지 않았습니다.')
+  if (!options.token) {
+    throw new Error('AI 연결 토큰을 발급하지 못해 저장을 중단했습니다.')
+  }
+  if (!isExpiryDays(options.expiresInDays)) {
     throw new Error(
       `보관 기간은 ${EXPIRY_DAYS_ALLOWLIST.join(', ')}일 중에서만 선택할 수 있습니다.`
     )
@@ -72,38 +85,106 @@ export async function uploadShare(
 
   const form = new FormData()
   form.append('image', imageBlob, 'capture.png')
-  if (context) {
-    form.append('context', JSON.stringify(context))
-  }
-  // 부재만 "기본 7일"로 받는다. 빈 문자열을 보내면 worker 가 400 이라 append 자체를 건너뛴다.
-  if (expiresInDays !== undefined) {
-    form.append('expiresInDays', String(expiresInDays))
-  }
+  form.append(
+    'context',
+    JSON.stringify({
+      ...context,
+      sourceUrl: sanitizeSourceUrlForUpload(context.sourceUrl)
+    })
+  )
+  form.append('expiresInDays', String(options.expiresInDays))
 
   const base = endpoint.replace(/\/+$/, '')
-  const init: RequestInit = {
+  const response = await fetch(`${base}/captures`, {
     method: 'POST',
+    headers: { Authorization: `Bearer ${options.token}` },
     body: form
-  }
-  // 토큰이 없을 때 헤더 키를 만들지 않는다 — worker 는 Authorization 이 존재하는데
-  // 값이 무효면 401 이라, 빈 문자열이나 'Bearer ' 만 보내면 익명 200 이 아니라 실패한다.
-  // ensureUserToken() 은 형식 검증을 통과한 문자열 아니면 null 만 주므로 falsy = 토큰 없음.
-  if (token) {
-    init.headers = { Authorization: `Bearer ${token}` }
-  }
+  })
+  if (!response.ok) throw new CaptureUploadError(response.status)
 
-  const res = await fetch(`${base}/upload`, init)
-  if (!res.ok) {
-    throw new UploadFailedError(res.status)
-  }
-  let data: { url?: string }
+  let data: unknown
   try {
-    data = (await res.json()) as { url?: string }
+    data = await response.json()
   } catch {
     throw new Error('서버 응답을 해석할 수 없습니다.')
   }
-  if (!data.url) {
-    throw new Error('서버 응답에 URL이 없습니다.')
+  if (!isPrivateCaptureUploadResult(data)) {
+    throw new Error('서버 응답에 캡처 ID 또는 삭제 예정 시각이 없습니다.')
   }
-  return data.url
+  return data
+}
+
+export interface PrivateCaptureListItem {
+  id: string
+  createdAt: string
+  url: string
+  title: string
+  captureType: string
+  pinCount: number
+}
+
+function privateApiBase(): string {
+  const endpoint: string | undefined = import.meta.env.VITE_UPLOAD_ENDPOINT
+  if (!endpoint) throw new Error('캡처 저장 서버가 설정되지 않았습니다.')
+  return endpoint.replace(/\/+$/, '')
+}
+
+function requireToken(token: string | null): string {
+  if (!token) throw new Error('AI 연결 토큰이 필요합니다.')
+  return token
+}
+
+function isPrivateCaptureListItem(value: unknown): value is PrivateCaptureListItem {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false
+  }
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.id === 'string' &&
+    typeof record.createdAt === 'string' &&
+    typeof record.url === 'string' &&
+    typeof record.title === 'string' &&
+    typeof record.captureType === 'string' &&
+    typeof record.pinCount === 'number' &&
+    Number.isSafeInteger(record.pinCount)
+  )
+}
+
+export async function listPrivateCaptures(
+  token: string | null,
+  limit = 20
+): Promise<PrivateCaptureListItem[]> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new Error('목록 개수는 1~100 사이여야 합니다.')
+  }
+  const response = await fetch(`${privateApiBase()}/captures?limit=${limit}`, {
+    headers: { Authorization: `Bearer ${requireToken(token)}` }
+  })
+  if (!response.ok) throw new CaptureUploadError(response.status)
+
+  let data: unknown
+  try {
+    data = await response.json()
+  } catch {
+    throw new Error('저장 목록 응답을 해석할 수 없습니다.')
+  }
+  if (!Array.isArray(data) || !data.every(isPrivateCaptureListItem)) {
+    throw new Error('저장 목록 응답 형식이 올바르지 않습니다.')
+  }
+  return data
+}
+
+export async function deletePrivateCapture(
+  token: string | null,
+  id: string
+): Promise<void> {
+  if (!id) throw new Error('삭제할 캡처 ID가 없습니다.')
+  const response = await fetch(
+    `${privateApiBase()}/captures/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${requireToken(token)}` }
+    }
+  )
+  if (!response.ok) throw new CaptureUploadError(response.status)
 }

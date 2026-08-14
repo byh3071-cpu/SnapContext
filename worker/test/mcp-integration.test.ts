@@ -47,6 +47,7 @@ type Stored = {
 function makeEnv(objects: Map<string, Stored>, historyRows: unknown[] = []): Env {
   return {
     SNAPCONTEXT_BEARER_TOKEN: TOKEN,
+    TOKEN_SIGNING_SECRET: TOKEN,
     BUCKET: {
       async get(key: string) {
         const o = objects.get(key)
@@ -195,7 +196,7 @@ describe('handleMcpRequest 통합 (MAJOR-4 fallback)', () => {
       init.sessionId
     )
     const packStr = JSON.stringify(pack.json)
-    expect(packStr).toContain('/i/p1')
+    expect(packStr).toContain('/pi/p1')
     expect(packStr).not.toMatch(/"isError"\s*:\s*true/)
 
     const analyze = await mcpCall(
@@ -212,7 +213,7 @@ describe('handleMcpRequest 통합 (MAJOR-4 fallback)', () => {
       init.sessionId
     )
     const analyzeStr = JSON.stringify(analyze.json)
-    expect(analyzeStr).toContain('/i/p1')
+    expect(analyzeStr).toContain('/pi/p1')
     expect(analyzeStr).toMatch(/원인 추정|버그/)
     expect(analyzeStr).not.toMatch(/"isError"\s*:\s*true/)
   })
@@ -240,6 +241,47 @@ describe('handleMcpRequest 통합 (MAJOR-4 fallback)', () => {
       init.sessionId
     )
     expect(JSON.stringify(pack.json)).toMatch(/isError|not found|NOT_FOUND|Capture/i)
+  })
+
+  it('snap_history D1 오류는 상세를 숨긴 INTERNAL_ERROR tool result다', async () => {
+    const env = makeEnv(new Map())
+    env.DB = {
+      prepare() {
+        return {
+          bind() {
+            return {
+              async all() {
+                throw new Error('SQL_SECRET_DETAIL')
+              }
+            }
+          }
+        }
+      }
+    } as unknown as D1Database
+    const init = await mcpCall(env, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1.0.0' }
+      }
+    })
+    const history = await mcpCall(
+      env,
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'snap_history', arguments: {} }
+      },
+      init.sessionId
+    )
+    const body = JSON.stringify(history.json)
+    expect(body).toMatch(/"isError"\s*:\s*true/)
+    expect(body).toContain('INTERNAL_ERROR')
+    expect(body).not.toContain('SQL_SECRET_DETAIL')
   })
 
   it('tools/call snap_analyze — 유효 id + mode', async () => {
@@ -274,7 +316,7 @@ describe('handleMcpRequest 통합 (MAJOR-4 fallback)', () => {
     )
     const body = JSON.stringify(refactor.json)
     expect(body).toMatch(/리팩토링|개선/)
-    expect(body).toContain('/i/p1')
+    expect(body).toContain('/pi/p1')
     expect(body).not.toMatch(/"isError"\s*:\s*true/)
   })
 
@@ -500,9 +542,9 @@ describe('P4 — MCP 자발 사용 문구 (instructions·description·annotation
     expect(text).toContain('instead of asking them to paste an image')
   })
 
-  it('serverInfo.version 이 0.4.1 (worker 번들 — ext manifest 와 독립, ADR-014)', async () => {
+  it('serverInfo.version 이 0.4.2', async () => {
     const result = await initResult()
-    expect(result.serverInfo?.version).toBe('0.4.1')
+    expect(result.serverInfo?.version).toBe('0.4.2')
   })
 
   it('툴 description 에 트리거 문구가 실린다', async () => {

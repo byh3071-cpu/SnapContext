@@ -3,6 +3,7 @@ import worker from '../src/index'
 import { DAY_MS, MAX_AGE_MS } from '../src/lib'
 import { listCaptures } from '../src/history'
 import type { Env } from '../src/env'
+import { generateUserToken, ownerFromToken } from '../src/token'
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4])
 
@@ -141,7 +142,8 @@ function makeUploadEnv(opts?: {
 
 async function postUpload(
   env: Env,
-  fields: { image?: Blob; context?: string; expiresInDays?: string }
+  fields: { image?: Blob; context?: string; expiresInDays?: string },
+  token?: string
 ): Promise<Response> {
   const form = new FormData()
   if (fields.image) form.set('image', fields.image, 'shot.png')
@@ -150,13 +152,39 @@ async function postUpload(
     form.set('expiresInDays', fields.expiresInDays)
   }
   return worker.fetch(
-    new Request('https://w.test/upload', { method: 'POST', body: form }),
+    new Request('https://w.test/upload', {
+      method: 'POST',
+      body: form,
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+    }),
     env,
     {} as ExecutionContext
   )
 }
 
 describe('POST /upload — D1 captures INSERT (Phase 2)', () => {
+  it('인증된 레거시 업로드는 이미지와 JSON R2 메타에 같은 owner를 기록한다', async () => {
+    const secret = 'legacy-owner-secret'
+    const token = await generateUserToken(secret, new Uint8Array(16).fill(7))
+    const expectedOwner = await ownerFromToken(token)
+    const { env, objects } = makeUploadEnv()
+    env.TOKEN_SIGNING_SECRET = secret
+
+    const response = await postUpload(
+      env,
+      {
+        image: new Blob([PNG], { type: 'image/png' }),
+        context: JSON.stringify(SHARED_CTX)
+      },
+      token
+    )
+
+    expect(response.status).toBe(200)
+    const { id } = (await response.json()) as { id: string }
+    expect(objects.get(id)?.customMetadata?.owner).toBe(expectedOwner)
+    expect(objects.get(`${id}.json`)?.customMetadata?.owner).toBe(expectedOwner)
+  })
+
   it('context 있는 성공 경로: R2 PUT 후 D1 INSERT (id=R2키, created_at=now, url/title/type/pin_count, expires_at=now+7d)', async () => {
     const fixedNow = Date.parse('2026-07-18T12:00:00.000Z')
     vi.spyOn(Date, 'now').mockReturnValue(fixedNow)
@@ -258,8 +286,7 @@ describe('POST /upload — D1 captures INSERT (Phase 2)', () => {
     expect(objects.has(`${body.id}.json`)).toBe(true)
     expect(inserts).toHaveLength(0)
     expect(warn).toHaveBeenCalledWith(
-      '[upload] context present but JSON parse failed; D1 index skipped',
-      { id: body.id }
+      '[upload] context present but JSON parse failed; D1 index skipped'
     )
     warn.mockRestore()
     vi.restoreAllMocks()

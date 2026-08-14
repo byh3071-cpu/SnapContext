@@ -1,4 +1,9 @@
-import { type SharedContext } from './lib'
+export interface IndexedCaptureContext {
+  sourceUrl: string
+  sourceTitle: string
+  captureType: string
+  pins: Array<{ id: number; memo: string }>
+}
 
 export interface CaptureInsertRow {
   id: string
@@ -14,7 +19,7 @@ export interface CaptureInsertRow {
 
 export interface CaptureRowInput {
   id: string
-  ctx: SharedContext
+  ctx: IndexedCaptureContext
   nowMs: number
   /** R2 customMetadata.expiresAt 와 동일 문자열 — 호출측에서 1회 계산해 전달 (SoT 봉인) */
   expiresAtIso: string

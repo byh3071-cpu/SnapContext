@@ -1386,6 +1386,89 @@ textarea.pin-memo__input {
 }
 
 /* ========================= 04 공유 (발행 블록) ========================= */
+
+.ai-relay__connection,
+.ai-relay__save,
+.ai-relay__manage {
+  display: grid;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+
+.ai-relay__token-row,
+.ai-relay__paste-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.ai-relay__token-status,
+.ai-relay__setup {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+}
+
+.ai-relay__token-status {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.ai-relay__paste-row .field {
+  flex: 1;
+}
+
+.ai-relay__setup {
+  max-height: 220px;
+  margin: 0;
+  padding: var(--s-3);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: var(--rule-hair) solid var(--hair);
+}
+
+.ai-relay__intent {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.ai-relay__saved-list {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.ai-relay__saved-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: var(--rule-hair) solid var(--hair);
+}
+
+.ai-relay__saved-summary {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ai-relay__saved-summary strong,
+.ai-relay__saved-summary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 360px) {
+  .ai-relay__token-row,
+  .ai-relay__paste-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
 .publish-block {
   position: relative;
   border: var(--rule-mid) solid var(--ink);

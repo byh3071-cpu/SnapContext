@@ -21,13 +21,14 @@ import {
 import { generateUserToken, ownerFromToken, verifyUserToken } from './token'
 import { allowTokenRequest } from './token-rate-limit'
 import { allowUploadRequest } from './upload-rate-limit'
+import { handlePrivateCaptureRoutes } from './private-capture-routes'
 import type { Env } from './env'
 
 export type { Env }
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization'
 }
 
@@ -94,6 +95,13 @@ export default {
     if (req.method === 'OPTIONS') {
       return new Response(null, { headers: CORS })
     }
+
+    const privateCaptureResponse = await handlePrivateCaptureRoutes(
+      req,
+      env,
+      url
+    )
+    if (privateCaptureResponse !== null) return privateCaptureResponse
 
     // 토큰 발급: POST /token — chrome-extension Origin 필수 (/upload 에는 Origin 검증 없음)
     if (req.method === 'POST' && url.pathname === '/token') {
@@ -178,7 +186,10 @@ export default {
       // 만료 절대시각은 여기서 1회만 계산 — 이미지 put·{id}.json put·D1 insert 가
       // 같은 문자열을 공유해야 저장소 간 split-brain 이 물리적으로 불가능해진다
       const expiresAtIso = new Date(nowMs + days * DAY_MS).toISOString()
-      const expiryMeta = { expiresAt: expiresAtIso }
+      const expiryMeta: Record<string, string> =
+        owner === null
+          ? { expiresAt: expiresAtIso }
+          : { expiresAt: expiresAtIso, owner }
       const context = form.get('context')
       const hasContext = typeof context === 'string' && context.length > 0
       let wroteJson = false
@@ -223,8 +234,7 @@ export default {
         } else {
           // malformed JSON: R2 raw 는 유지·뷰어 그레이스풀 저하와 일관. D1 스킵은 관측 가능하게.
           console.warn(
-            '[upload] context present but JSON parse failed; D1 index skipped',
-            { id }
+            '[upload] context present but JSON parse failed; D1 index skipped'
           )
         }
       }

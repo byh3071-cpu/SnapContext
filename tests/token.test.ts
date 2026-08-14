@@ -227,25 +227,23 @@ describe('ensureUserToken', () => {
     expect(console.warn).toHaveBeenCalled()
   })
 
-  // N1 — storage I/O 는 "실패하면 null" 계약의 구멍이었다. 예외가 호출측으로 새면
-  // ImageActions 의 catch 가 잡아 업로드 자체가 안 나간다.
-  it('storage 읽기가 실패해도 던지지 않고 발급으로 진행한다', async () => {
+  it('storage 읽기가 실패하면 새 owner를 만들지 않고 중단한다', async () => {
     const storage = stubChromeStorage()
     storage.get.mockRejectedValueOnce(new Error('storage unavailable'))
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(tokenJson(ISSUED_TOKEN)))
+    const fetchMock = vi.fn().mockResolvedValue(tokenJson(ISSUED_TOKEN))
+    vi.stubGlobal('fetch', fetchMock)
 
-    await expect(ensureUserToken()).resolves.toBe(ISSUED_TOKEN)
+    await expect(ensureUserToken()).rejects.toThrow('storage unavailable')
+    expect(fetchMock).not.toHaveBeenCalled()
     expect(console.warn).toHaveBeenCalled()
   })
 
-  it('storage 저장이 실패해도 방금 발급받은 토큰을 반환한다', async () => {
+  it('storage 저장이 실패하면 접근 불가능한 owner에 업로드하지 않고 중단한다', async () => {
     const storage = stubChromeStorage()
     storage.set.mockRejectedValueOnce(new Error('QUOTA_BYTES quota exceeded'))
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(tokenJson(ISSUED_TOKEN)))
 
-    // 발급에 성공해 rate-limit 슬롯까지 쓴 유효 토큰을 버리면 안 된다 —
-    // 이번 업로드는 성공하고 다음 번에 재발급될 뿐이다
-    await expect(ensureUserToken()).resolves.toBe(ISSUED_TOKEN)
+    await expect(ensureUserToken()).rejects.toThrow('QUOTA_BYTES quota exceeded')
     expect(console.warn).toHaveBeenCalled()
   })
 
@@ -276,12 +274,12 @@ describe('clearUserToken', () => {
     expect(storage.store.has(TOKEN_STORAGE_KEY)).toBe(false)
   })
 
-  it('지우기가 실패해도 던지지 않는다 (익명 재시도를 막으면 안 된다)', async () => {
+  it('지우기가 실패하면 같은 토큰 재사용을 막기 위해 오류를 드러낸다', async () => {
     const storage = stubChromeStorage({ [TOKEN_STORAGE_KEY]: VALID_TOKEN })
     storage.remove.mockRejectedValueOnce(new Error('storage unavailable'))
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    await expect(clearUserToken()).resolves.toBeUndefined()
+    await expect(clearUserToken()).rejects.toThrow('storage unavailable')
     expect(console.warn).toHaveBeenCalled()
   })
 

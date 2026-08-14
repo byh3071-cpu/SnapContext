@@ -50,7 +50,7 @@ function buildMasthead(): { masthead: HTMLElement; settingsBtn: HTMLButtonElemen
         </div>
       </div>
       <button class="icon-btn" type="button" data-role="settings"
-        aria-label="설정 / 도움말: 단축키" title="설정 / 도움말: 단축키"
+        aria-label="설정: 단축키와 보관 기간" title="설정: 단축키와 보관 기간"
         aria-expanded="false" aria-controls="help-panel">${GEAR_SVG}</button>
     </div>
     <div class="mast-meta" aria-hidden="true">
@@ -141,7 +141,7 @@ function init(): void {
   secPack.className = 'sec'
   secPack.setAttribute('aria-labelledby', 'sec-pack-title')
 
-  /* ---- §04 공유 (ImageActions가 sec-head + 발행 블록 구성) ---- */
+  /* ---- §04 내 AI 연결·저장 ---- */
   const secShare = document.createElement('section')
   secShare.className = 'sec sec--minor'
   secShare.setAttribute('aria-labelledby', 'sec-share-title')

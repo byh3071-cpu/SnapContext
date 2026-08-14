@@ -34,9 +34,9 @@ let inFlight: Promise<string | null> | null = null
 /**
  * 저장된 토큰을 돌려주고, 없거나 손상됐으면 worker 에서 발급받아 저장한다.
  *
- * 실패 시 throw 하지 않고 null — 호출측이 익명 업로드로 계속 갈 수 있어야 한다.
- * (fallback 금지 규칙은 "실패를 성공으로 위장하지 마라"는 뜻이고, 토큰은 선택 기능이라
- *  degradation 자체는 금지 대상이 아니다. 대신 사유를 반드시 console.warn 으로 드러낸다.)
+ * 발급 실패는 null — 호출측은 저장을 중단하고 사용자에게 재시도를 안내한다.
+ * storage I/O 실패는 예외를 그대로 드러낸다. 토큰을 읽거나 영구 저장하지 못한 상태에서
+ * 새 owner로 업로드하면 다음 실행에서 그 캡처에 다시 접근할 수 없기 때문이다.
  */
 export async function ensureUserToken(): Promise<string | null> {
   if (inFlight) return inFlight
@@ -52,14 +52,15 @@ export async function ensureUserToken(): Promise<string | null> {
  * 서버가 거부한 토큰을 폐기한다 (401 복구 경로).
  *
  * 폐기하지 않으면 시크릿 로테이션·엔드포인트 전환 뒤에 같은 토큰으로 계속 401 을 받아
- * 익명이면 200 이 나올 업로드가 영구히 실패한다.
- * 지우기 실패가 익명 재시도를 막으면 안 되므로 던지지 않고 사유만 남긴다.
+ * 폐기하지 않으면 새 토큰 발급 없이 같은 401이 반복된다.
+ * 지우기 실패를 숨기면 같은 토큰으로 재시도하게 되므로 오류를 그대로 드러낸다.
  */
 export async function clearUserToken(): Promise<void> {
   try {
     await removeStorageItem(TOKEN_STORAGE_KEY)
   } catch (e) {
     console.warn('[token] 저장된 토큰을 지우지 못했습니다.', e)
+    throw e
   }
 }
 
@@ -115,14 +116,12 @@ export function maskToken(token: string): string {
 }
 
 async function resolveUserToken(): Promise<string | null> {
-  // storage I/O 도 "실패하면 null" 계약 안에 둔다 — 여기서 예외가 새면 호출측 catch 가
-  // 잡아 업로드 자체가 안 나가고, 선택 기능인 토큰이 필수 기능을 죽이게 된다
   let stored: unknown
   try {
     stored = await getStorageItem<unknown>(TOKEN_STORAGE_KEY)
   } catch (e) {
-    console.warn('[token] 저장된 토큰을 읽지 못했습니다. 새로 발급합니다.', e)
-    stored = undefined
+    console.warn('[token] 저장된 토큰을 읽지 못해 캡처 저장을 중단합니다.', e)
+    throw e
   }
   if (isValidTokenFormat(stored)) return stored
   if (stored !== undefined) {
@@ -136,9 +135,8 @@ async function resolveUserToken(): Promise<string | null> {
   try {
     await setStorageItem(TOKEN_STORAGE_KEY, issued)
   } catch (e) {
-    // 저장은 실패해도 방금 발급받은 토큰은 유효하다. 여기서 버리면 rate-limit 슬롯까지
-    // 쓴 토큰을 날리면서 이번 업로드도 죽인다 — 이번엔 쓰고 다음에 재발급한다.
-    console.warn('[token] 발급받은 토큰을 저장하지 못했습니다. 이번 요청에만 사용합니다.', e)
+    console.warn('[token] 발급받은 토큰을 저장하지 못해 캡처 저장을 중단합니다.', e)
+    throw e
   }
   return issued
 }
@@ -147,7 +145,7 @@ async function requestUserToken(): Promise<string | null> {
   // 업로드와 같은 소스에서 베이스를 읽는다 (src/utils/upload.ts 와 동일)
   const endpoint: string | undefined = import.meta.env.VITE_UPLOAD_ENDPOINT
   if (!endpoint) {
-    console.warn('[token] 업로드 엔드포인트가 없어 토큰 발급을 건너뜁니다. (익명 업로드로 진행)')
+    console.warn('[token] 캡처 저장 서버가 없어 토큰을 발급할 수 없습니다.')
     return null
   }
   const base = endpoint.replace(/\/+$/, '')
@@ -158,13 +156,13 @@ async function requestUserToken(): Promise<string | null> {
     // Origin 은 forbidden header 라 브라우저가 자동으로 붙여줘야 통과한다.
     res = await fetch(`${base}/token`, { method: 'POST' })
   } catch (e) {
-    console.warn('[token] 발급 요청이 네트워크 단계에서 실패했습니다. (익명 업로드로 진행)', e)
+    console.warn('[token] 토큰 발급 요청이 네트워크 단계에서 실패했습니다.', e)
     return null
   }
 
   if (!res.ok) {
     console.warn(
-      `[token] 발급 실패 (${res.status}) — 익명 업로드로 진행합니다.`
+      `[token] 토큰 발급 실패 (${res.status}) — 캡처 저장을 중단합니다.`
     )
     return null
   }
@@ -175,15 +173,15 @@ async function requestUserToken(): Promise<string | null> {
   try {
     data = await res.json()
   } catch {
-    console.warn('[token] 발급 응답을 해석할 수 없습니다. (익명 업로드로 진행)')
+    console.warn('[token] 토큰 발급 응답을 해석할 수 없습니다.')
     return null
   }
   if (typeof data !== 'object' || data === null || !('token' in data)) {
-    console.warn('[token] 발급 응답에 token 이 없습니다. (익명 업로드로 진행)')
+    console.warn('[token] 토큰 발급 응답에 token이 없습니다.')
     return null
   }
   if (!isValidTokenFormat(data.token)) {
-    console.warn('[token] 발급 응답의 토큰 형식이 올바르지 않습니다. (익명 업로드로 진행)')
+    console.warn('[token] 발급 응답의 토큰 형식이 올바르지 않습니다.')
     return null
   }
   return data.token

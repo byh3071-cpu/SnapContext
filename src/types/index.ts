@@ -299,3 +299,24 @@ export type SharedContext = {
   pins: Array<{ id: number; memo: string }>
 }
 
+export const SHARED_CONTEXT_MODES = [
+  'context',
+  'bug-report',
+  'refactor',
+  'reference'
+] as const
+
+export type SharedContextMode = (typeof SHARED_CONTEXT_MODES)[number]
+
+export interface SharedContextV2 {
+  v: 2
+  sourceUrl: string
+  sourceTitle: string
+  captureType: CaptureType
+  capturedAt: string
+  viewport: { width: number; height: number }
+  pins: Array<{ id: number; memo: string }>
+  intent: string
+  mode: SharedContextMode
+}
+

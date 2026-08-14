@@ -6,6 +6,16 @@ tags: [changelog]
 
 # Changelog
 
+## 0.4.2 — 구현 완료 · 배포 승인 대기
+
+- 신규 캡처는 owner 필수 `POST /captures`와 HMAC 파생 private R2 key에 저장한다. 공개 링크와 익명 fallback은 없다.
+- 5분 서명 `/pi` URL, owner별 목록, owner 확인 즉시 삭제를 추가했다.
+- `snap_pack`·`snap_analyze`에 owner 집행과 동일한 `NOT_FOUND` tool error를 적용했다.
+- `SharedContextV2`에 `intent`와 neutral `context` mode를 추가하고 캡처 데이터는 untrusted 경계로 감쌌다.
+- 주 화면에 Claude Code·Cursor·Codex 연결, `내 AI에 저장`, 서버 목록·즉시 삭제를 배치했다.
+- 개인정보처리방침과 스토어 문구에서 owner hash, Cloudflare, AI 제공자, 5분 bearer URL, 로그 가능성, admin 정책을 명시했다.
+- 레거시 `/upload`·`/i`·`/s`는 기존 확장 호환 기간 동안만 유지하며 제거는 별도 사람 게이트다.
+
 ## 0.4.1 — 미출시 (worker-only · 배포 대기)
 
 > 배포면: worker 만. 확장 코드 변경 0 → **스토어 재심사 없음**(ADR-014 2-트랙 버전 스킴의 첫 실증). 버전 정본은 `worker/src/mcp.ts` serverInfo(→0.4.1)만 bump, 확장 manifest 는 0.4.0 유지.

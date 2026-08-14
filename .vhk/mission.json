@@ -1,15 +1,20 @@
 {
   "schemaVersion": 1,
-  "objective": "0.4.2 Private-by-Design (PRD-0.4.2, plan-audit 통과 2026-07-27) — P1 worker owner-scope(T1.1 pack/analyze owner 격리 test-first·교차→404 / T1.2 upload owner→R2 customMetadata / T1.3 레거시 D1 fallback) → P2 서명 /i(image-url.ts·test-first) → P3 ext post-share 비공개+D0 메인승격(test-first) → P4 ADR 015~017·PRIVACY·버전 0.4.2 → P5 /s 제거(2차 배포 후). 배포 계약: 1차=owner-gate만, breaking(서명 /i·url 제거·/s 제거)은 전부 2차 일괄(PRD 결정#6). 미해결(사람 게이트): 0.4.0 스토어 제출(0.3.0 심사 통과 확인됨)·worker 1/2차 배포·재심사#1·Phase별 머지·tag v0.4.2",
+  "objective": "SnapContext 0.4.2 최종 통합 구현 — 사람 직접 전달(AI 채팅에 이미지→요청 2단계)과 MCP private 저장을 분리한다. 신규 v2는 SharedContextV2(intent·neutral mode), sc_ owner 필수 POST/GET/DELETE /captures, 5분 서명 /pi, HMAC 파생 R2 key, generic NOT_FOUND tool error, admin 읽기 전용, R2 우선 즉시 삭제를 사용한다. 레거시 /upload·/i·/s는 기존 확장 호환을 위해 한시 유지하되 신규 확장은 fallback하지 않는다. 개인정보·온보딩·용어·버전 0.4.2를 일치시킨다. 승인 근거: ADR-015~019 Accepted(2026-08-05), Orca 없이 단일 worktree 구현 사용자 승인. 미해결 사람 게이트: 배포·시크릿/Cloudflare 설정 적용·스토어 제출·레거시 write 차단/제거·merge/tag.",
   "scope": [
     "src/**",
     "tests/**",
     "worker/**",
     "docs/**",
     "scripts/**",
+    "prompts/**",
     ".vhk/mission.json",
+    "package.json",
+    "package-lock.json",
+    "manifest.json",
     "pnpm-lock.yaml",
-    "pnpm-workspace.yaml"
+    "pnpm-workspace.yaml",
+    "TASKS.md"
   ],
   "forbidden": [
     "worker/node_modules/**",
@@ -17,5 +22,5 @@
     "docs/ui-audit/**"
   ],
   "createdAt": "2026-06-04T13:32:15.559Z",
-  "updatedAt": "2026-07-27T00:00:00.000Z"
+  "updatedAt": "2026-08-05T04:00:00.000Z"
 }

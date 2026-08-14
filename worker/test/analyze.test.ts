@@ -52,11 +52,12 @@ const ctx: SharedContext = {
 }
 
 const ctxJson = JSON.stringify(ctx)
+const SIGNING_SECRET = 'test-signing-secret'
 
 describe('assertAnalyzeMode (allowlist)', () => {
   it('미지정 → 기본 bug-report', () => {
     expect(assertAnalyzeMode(undefined)).toBe(DEFAULT_ANALYZE_MODE)
-    expect(DEFAULT_ANALYZE_MODE).toBe('bug-report')
+    expect(DEFAULT_ANALYZE_MODE).toBe('context')
   })
 
   it('allowlist 3종 통과', () => {
@@ -118,11 +119,12 @@ describe('snapAnalyze (만료/없음 — snap_pack 헬퍼 재사용)', () => {
     const md = await snapAnalyze(bucket as unknown as R2Bucket, {
       id: 'ok',
       origin: 'https://w.test',
-      now: Date.now()
+      now: Date.now(),
+      signingSecret: SIGNING_SECRET
     })
     expect(md).toContain('Page Title')
-    expect(md).toContain('https://w.test/i/ok')
-    expect(md).toMatch(/원인 추정|버그/)
+    expect(md).toContain('https://w.test/pi/ok')
+    expect(md).toContain('컨텍스트 전달')
   })
 
   it('누출 회귀: {id}.json 화이트리스트 밖 필드(userNote·tags·userAgent·pin x/y)가 다이제스트에 미노출', async () => {
@@ -142,10 +144,11 @@ describe('snapAnalyze (만료/없음 — snap_pack 헬퍼 재사용)', () => {
     const md = await snapAnalyze(bucket as unknown as R2Bucket, {
       id: 'leak',
       origin: 'https://w.test',
-      now: Date.now()
+      now: Date.now(),
+      signingSecret: SIGNING_SECRET
     })
     expect(md).toContain('핀메모OK')
-    expect(md).toContain('https://w.test/i/leak')
+    expect(md).toContain('https://w.test/pi/leak')
     expect(md).not.toContain('SECRET_NOTE')
     expect(md).not.toContain('SECRET_TAG')
     expect(md).not.toContain('SECRET_UA')
@@ -198,7 +201,8 @@ describe('snapAnalyze (만료/없음 — snap_pack 헬퍼 재사용)', () => {
     const md = await snapAnalyze(bucket as unknown as R2Bucket, {
       id: 'long',
       origin: 'https://w.test',
-      now: uploadedAt + 8 * DAY_MS
+      now: uploadedAt + 8 * DAY_MS,
+      signingSecret: SIGNING_SECRET
     })
     expect(md).toContain('Page Title')
   })

@@ -81,9 +81,7 @@ export function readExpiry(obj: ExpiryMetaSource): ExpiryInfo {
   const parsed = Date.parse(raw)
   if (!Number.isFinite(parsed)) {
     // 조용히 7일로 되돌리면 1일 캡처가 7일 산다(과보관) → 만료 처리 (fallback 금지 규칙)
-    console.warn('[expiry] customMetadata.expiresAt 파싱 실패 — 만료 처리', {
-      expiresAt: raw
-    })
+    console.warn('[expiry] customMetadata.expiresAt 파싱 실패 — 만료 처리')
     return { expiresAtMs: uploadedMs, retentionDays: 0, source: 'invalid' }
   }
   return {

@@ -39,6 +39,8 @@ const ctxJson = JSON.stringify({
   pins: [{ id: 1, memo: 'm' }]
 })
 
+const SIGNING_SECRET = 'test-signing-secret'
+
 describe('getSnapPack (snap_pack)', () => {
   it('유효 id: SharedContext JSON 반환', async () => {
     const bucket = makeBucket(
@@ -69,9 +71,12 @@ describe('getSnapPack (snap_pack)', () => {
       id: 'id1',
       origin: 'https://w.test',
       includeImage: true,
-      now: Date.now()
+      now: Date.now(),
+      signingSecret: SIGNING_SECRET
     })
-    expect(pack.imageUrl).toBe('https://w.test/i/id1')
+    expect(pack.imageUrl).toMatch(
+      /^https:\/\/w\.test\/pi\/id1\?exp=\d+&sig=[A-Za-z0-9_-]{22}$/
+    )
     expect(JSON.stringify(pack)).not.toMatch(/data:image/)
     expect(JSON.stringify(pack)).not.toMatch(/base64/i)
   })
