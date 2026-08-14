@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import registerMcpScript from '../scripts/register-mcp.ps1?raw'
 import {
   MCP_CLIENTS,
   buildMcpSetup,
@@ -10,6 +11,31 @@ import {
 } from '../src/utils/share-expiry'
 
 describe('사람이 읽는 0.4.2 연결 안내', () => {
+  it('등록 스크립트는 production 기본값과 -Local URL을 구분하고 토큰을 먼저 검증한다', () => {
+    expect(registerMcpScript).toContain('[switch]$Local')
+    expect(registerMcpScript).toMatch(/\$url\s*=\s*if\s*\(\$Local\)/)
+    expect(registerMcpScript).toContain('http://127.0.0.1:8787/mcp')
+    expect(registerMcpScript).toContain(
+      'https://snapcontext-worker.byh3071-26a.workers.dev/mcp'
+    )
+    expect(registerMcpScript).toContain('Authorization: Bearer ${')
+    expect(registerMcpScript).toContain(
+      '--bearer-token-env-var $tokenVariable'
+    )
+
+    const userValidation = registerMcpScript.indexOf(
+      'SNAPCONTEXT_MCP_TOKEN.StartsWith'
+    )
+    const adminValidation = registerMcpScript.indexOf(
+      'SNAPCONTEXT_MCP_ADMIN_TOKEN.StartsWith'
+    )
+    const registration = registerMcpScript.indexOf('claude mcp add')
+    expect(userValidation).toBeGreaterThanOrEqual(0)
+    expect(adminValidation).toBeGreaterThanOrEqual(0)
+    expect(registration).toBeGreaterThan(userValidation)
+    expect(registration).toBeGreaterThan(adminValidation)
+  })
+
   it('Claude Code·Cursor·Codex 모두 토큰 원문 대신 환경변수를 참조한다', () => {
     expect(MCP_CLIENTS).toEqual(['claude-code', 'cursor', 'codex'])
     for (const client of MCP_CLIENTS) {

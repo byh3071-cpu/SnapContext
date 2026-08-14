@@ -1,11 +1,17 @@
 # SnapContext MCP를 Claude Code와 Codex에 등록한다.
 # 토큰 원문을 명령 인자나 설정 파일에 넣지 않고 환경 변수 이름만 등록한다.
 param(
-  [switch]$Admin
+  [switch]$Admin,
+  [switch]$Local
 )
 
 $ErrorActionPreference = 'Stop'
-$url = 'https://snapcontext-worker.byh3071-26a.workers.dev/mcp'
+$url = if ($Local) {
+  'http://127.0.0.1:8787/mcp'
+}
+else {
+  'https://snapcontext-worker.byh3071-26a.workers.dev/mcp'
+}
 
 if ($Admin) {
   if ([string]::IsNullOrWhiteSpace($env:SNAPCONTEXT_MCP_ADMIN_TOKEN)) {
