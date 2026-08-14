@@ -45,6 +45,10 @@ docs/ui-audit/swiss/refs/
 .secret-*.txt
 .dev.vars
 
+# dogfood 로컬 전용 (프로필·wrangler PID)
+tests/e2e/dogfood/profile/
+.dogfood-wrangler.pid
+
 # Phase 4 1회용 로컬 스크립트 잔재 (정식본은 scripts/e2e-smoke.ps1)
 worker/release-gates.ps1
 worker/e2e-smoke.ps1
