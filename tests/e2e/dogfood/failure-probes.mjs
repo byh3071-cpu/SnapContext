@@ -2,7 +2,7 @@
  * dogfood failure probes (4종) — R2 hardened.
  * 순서: 동의 취소 → invalid token → 삭제 후 접근 → Worker 중단(마지막).
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
@@ -13,9 +13,13 @@ import {
   assertNoProductionUrl,
   auditedFetch,
   LOCAL_UPLOAD_ENDPOINT,
+  parseDevVars,
   stripSecretsForLog
 } from '../../../scripts/dogfood/lib.mjs'
-import { killOwnedProcessTree } from '../../../scripts/dogfood/process-own.mjs'
+import {
+  requestOwnedStop,
+  waitOwnedStopComplete
+} from '../../../scripts/dogfood/process-own.mjs'
 import { encodeMarkerToPng } from './fixtures/marker.mjs'
 import {
   assertExplicitFailureMessage,
@@ -29,6 +33,8 @@ const EXTENSION_PATH = resolve(ROOT, 'dist')
 const PROFILE_DIR = resolve(__dirname, 'profile')
 const LOG_DIR = resolve(__dirname, 'logs')
 const PID_PATH = resolve(ROOT, '.dogfood-wrangler.pid')
+const STOP_PATH = resolve(ROOT, '.dogfood-stop')
+const DOGFOOD_VARS_PATH = resolve(ROOT, 'worker', '.dev.vars.dogfood')
 const MCP_URL = `${LOCAL_UPLOAD_ENDPOINT}/mcp`
 const TOKEN_KEY = 'snapcontextToken'
 const CONSENT_KEY = 'snapcontext.privateUploadConsent'
@@ -194,10 +200,15 @@ export async function runFailureProbes(opts) {
       )
     }
 
-    // —— (b) Worker 중단 (identity kill only) ——
+    // —— (b) Worker 중단 — supervise stop 신호(nonce). stale PID kill 금지.
     try {
       await installRequestProbe(side)
-      const pid = await killOwnedProcessTree(PID_PATH)
+      if (!existsSync(DOGFOOD_VARS_PATH)) {
+        throw new Error('worker/.dev.vars.dogfood 없음 — stop nonce 불가')
+      }
+      const bootNonce = parseDevVars(readFileSync(DOGFOOD_VARS_PATH, 'utf8')).DOGFOOD_BOOT_NONCE
+      requestOwnedStop(STOP_PATH, bootNonce)
+      await waitOwnedStopComplete(STOP_PATH, 30_000, { pidPath: PID_PATH })
       await waitWorkerDown(15000, seenUrls)
       await side.evaluate(async (key) => {
         await chrome.storage.local.set({ [key]: 7 })
@@ -225,7 +236,7 @@ export async function runFailureProbes(opts) {
       if (infoToasts.some((t) => /저장했습니다/.test(t))) {
         throw new Error('Worker 중단인데 성공 토스트가 표시됨')
       }
-      logProbe('Worker 중단 명시 실패', true, `pid=${pid} toast=${toastText}`)
+      logProbe('Worker 중단 명시 실패', true, `owned-stop toast=${toastText}`)
     } catch (err) {
       logProbe(
         'Worker 중단 명시 실패',

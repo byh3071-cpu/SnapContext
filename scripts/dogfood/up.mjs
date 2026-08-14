@@ -28,18 +28,23 @@ import {
   assertNoProductionUrl,
   assembleViteBuildEnv,
   auditedFetch,
+  buildCommandIdentityFromArgv,
   buildDogfoodDevVarsContent,
   dogfoodHealthUrl,
+  formatDiagnosticCommand,
   generateBootNonce,
   generateLocalSecrets,
-  normalizeCommandIdentity,
   parseDevVars,
   resolveMigrationsArgs,
   resolveWranglerDevArgs,
-  serializePidMeta,
   validateDogfoodDevVars
 } from './lib.mjs'
-import { killOwnedProcessTree, readLiveProcess } from './process-own.mjs'
+import {
+  describePortOccupancy,
+  hasPortListener,
+  requestOwnedStop,
+  waitOwnedStopComplete
+} from './process-own.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '../..')
@@ -50,6 +55,9 @@ const DOGFOOD_VARS_PATH = join(WORKER_DIR, DOGFOOD_VARS_FILENAME)
 const DOGFOOD_RUNTIME = join(WORKER_DIR, '.dogfood-runtime')
 const PROFILE_DIR = join(ROOT, 'tests/e2e/dogfood/profile')
 const PID_PATH = join(ROOT, '.dogfood-wrangler.pid')
+const STOP_PATH = join(ROOT, '.dogfood-stop')
+const SUPERVISE_JS = join(__dirname, 'supervise.mjs')
+const SUPERVISE_CONFIG = join(ROOT, '.dogfood-supervise.json')
 const WRANGLER_JS = join(WORKER_DIR, 'node_modules/wrangler/bin/wrangler.js')
 const VITE_JS = join(ROOT, 'node_modules/vite/bin/vite.js')
 
@@ -129,16 +137,20 @@ function prepareDogfoodRuntime() {
 }
 
 /**
+ * 포트 점유 시 어떤 프로세스도 죽이지 않고 fail-loud.
  * @param {string} host
  * @param {number} port
  */
-function assertPortFree(host, port) {
+async function assertPortFreeOrFailLoud(host, port) {
+  if (hasPortListener(port, host)) {
+    throw new Error(describePortOccupancy(PID_PATH, port, host))
+  }
   return new Promise((resolve, reject) => {
     const server = createServer()
     server.once('error', (err) => {
       reject(
         new Error(
-          `포트 ${host}:${port} 사용 중 — dogfood:up 중단 (${err instanceof Error ? err.message : err})`
+          `${describePortOccupancy(PID_PATH, port, host)}\nbind 오류: ${err instanceof Error ? err.message : err}`
         )
       )
     })
@@ -173,77 +185,90 @@ function applyMigrations() {
 }
 
 /**
+ * supervise 기동 — wrangler 는 supervise 가 handle 로 소유.
+ * spawn→handoff 단일 try/finally.
  * @param {string} bootNonce
- * @returns {import('node:child_process').ChildProcess}
+ * @returns {Promise<{ supervisor: import('node:child_process').ChildProcess }>}
  */
-function startWranglerDev(bootNonce) {
+async function startWranglerDev(bootNonce) {
   const persistTo = join(DOGFOOD_RUNTIME, '.wrangler', 'state')
   const args = resolveWranglerDevArgs(DOGFOOD_VARS_FILENAME, { persistTo })
   for (const a of args) {
     if (typeof a === 'string') assertNoProductionUrl(a, 'wrangler-arg')
   }
   const wranglerArgs = args.slice(1)
-  log(`wrangler 기동: wrangler ${wranglerArgs.join(' ')} (cwd=.dogfood-runtime)`)
+  log(`wrangler 기동(via supervise): wrangler ${wranglerArgs.join(' ')}`)
   assertBin(WRANGLER_JS, 'wrangler')
-  const cmd = `${process.execPath} ${WRANGLER_JS} ${wranglerArgs.join(' ')}`
+  assertBin(SUPERVISE_JS, 'supervise')
   const runtimeCwd = DOGFOOD_RUNTIME.replace(/\\/g, '/')
-  // identity 사전 검증 — spawn 전에 fail-closed
-  normalizeCommandIdentity(cmd, { cwd: runtimeCwd })
-  const child = spawn(process.execPath, [WRANGLER_JS, ...wranglerArgs], {
-    cwd: DOGFOOD_RUNTIME,
-    stdio: 'ignore',
-    env: process.env,
-    windowsHide: true,
-    detached: true
+  buildCommandIdentityFromArgv(process.execPath, [WRANGLER_JS, ...wranglerArgs], {
+    cwd: runtimeCwd
   })
-  /** @type {{ code: number | null, signal: NodeJS.Signals | null } | null} */
-  let exited = null
-  child.on('exit', (code, signal) => {
-    exited = { code, signal }
-    console.error(`[dogfood:up] wrangler 종료 감지 code=${code} signal=${signal}`)
-  })
-  child.on('error', (err) => {
-    console.error(`[dogfood:up] wrangler spawn 실패: ${err.message}`)
-  })
-  // @ts-expect-error attach monitor
-  child.__dogfoodExited = () => exited
-  const pid = child.pid
-  if (pid == null) throw new Error('wrangler pid 없음')
+  const diagnosticCmd = formatDiagnosticCommand(process.execPath, [
+    WRANGLER_JS,
+    ...wranglerArgs
+  ])
+  log(`executable(공백 안전): ${diagnosticCmd.slice(0, 120)}...`)
 
-  // B1: spawn 직후 OS CreationDate 를 읽어 저장 (Date.now() 60초 창 금지)
-  let live = null
-  for (let i = 0; i < 20; i++) {
-    live = readLiveProcess(pid)
-    if (live != null) break
-    const until = Date.now() + 50
-    while (Date.now() < until) {
-      /* brief wait for process registration */
-    }
-  }
-  if (live == null) {
-    throw new Error(`spawn 직후 live 프로세스 조회 실패 pid=${pid}`)
-  }
-  const identity = normalizeCommandIdentity(live.cmd, { cwd: runtimeCwd })
+  if (existsSync(STOP_PATH)) unlinkSync(STOP_PATH)
+  if (existsSync(PID_PATH)) unlinkSync(PID_PATH)
+
   writeFileSync(
-    PID_PATH,
-    serializePidMeta({
-      pid,
-      startedAtMs: live.startedAtMs,
-      cmd: live.cmd,
+    SUPERVISE_CONFIG,
+    JSON.stringify({
       bootNonce,
-      identity
+      runtimeDir: DOGFOOD_RUNTIME,
+      wranglerJs: WRANGLER_JS,
+      wranglerArgs,
+      pidPath: PID_PATH,
+      stopPath: STOP_PATH,
+      nodeExecutable: process.execPath
     }),
     'utf8'
   )
-  return child
+
+  const supervisor = spawn(process.execPath, [SUPERVISE_JS], {
+    cwd: ROOT,
+    stdio: 'ignore',
+    env: { ...process.env, DOGFOOD_SUPERVISE_CONFIG: SUPERVISE_CONFIG },
+    windowsHide: true,
+    detached: true
+  })
+  if (supervisor.pid == null) throw new Error('supervise pid 없음')
+
+  try {
+    // PID 파일 handoff 대기 (async polling)
+    const handoffDeadline = Date.now() + 15_000
+    while (Date.now() < handoffDeadline) {
+      if (existsSync(PID_PATH)) break
+      if (supervisor.exitCode != null) {
+        throw new Error(`supervise 조기 종료 code=${supervisor.exitCode}`)
+      }
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    if (!existsSync(PID_PATH)) {
+      throw new Error('supervise PID 진단 파일 handoff 시간 초과')
+    }
+    return { supervisor }
+  } catch (err) {
+    try {
+      requestOwnedStop(STOP_PATH, bootNonce)
+      await waitOwnedStopComplete(STOP_PATH, 10_000)
+    } catch (cleanupErr) {
+      const original = err instanceof Error ? err.message : String(err)
+      const cleanup =
+        cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+      throw new Error(`부트 handoff 실패: ${original} | cleanup: ${cleanup}`)
+    }
+    throw err
+  }
 }
 
 /**
- * @param {import('node:child_process').ChildProcess} child
  * @param {string} bootNonce
  * @param {number} timeoutMs
  */
-async function waitDogfoodHealthcheck(child, bootNonce, timeoutMs = 90_000) {
+async function waitDogfoodHealthcheck(bootNonce, timeoutMs = 90_000) {
   const url = dogfoodHealthUrl(bootNonce)
   assertNoProductionUrl(url, 'healthcheck')
   const started = Date.now()
@@ -251,11 +276,6 @@ async function waitDogfoodHealthcheck(child, bootNonce, timeoutMs = 90_000) {
   /** @type {string[]} */
   const recorder = []
   while (Date.now() - started < timeoutMs) {
-    // @ts-expect-error monitor
-    const exited = typeof child.__dogfoodExited === 'function' ? child.__dogfoodExited() : null
-    if (exited) {
-      throw new Error(`wrangler 조기 종료: ${JSON.stringify(exited)}`)
-    }
     try {
       recorder.length = 0
       const res = await auditedFetch(url, { method: 'GET' }, recorder)
@@ -289,49 +309,29 @@ function prepareChromeProfile() {
   log(`Chrome profile 준비: ${PROFILE_DIR}`)
 }
 
-/**
- * 부트 실패 cleanup — 검증된 owned tree kill. health 미기동 시 skipHealth.
- * @param {{ skipHealth?: boolean }} [opts]
- */
-async function cleanupFailedBoot(opts = {}) {
-  if (!existsSync(PID_PATH)) return
-  try {
-    await killOwnedProcessTree(PID_PATH, {
-      skipHealth: opts.skipHealth === true
-    })
-    log('부트 실패 cleanup: owned process-tree 종료 완료')
-  } catch (cleanupErr) {
-    console.error(
-      '[dogfood:up] cleanup 실패(PID 메타 유지):',
-      cleanupErr instanceof Error ? cleanupErr.message : cleanupErr
-    )
-    throw cleanupErr
-  }
-}
-
 async function main() {
   log(`단계: ${BOOTSTRAP_STEPS.join(' → ')}`)
   log(`로컬 엔드포인트 고정: ${LOCAL_UPLOAD_ENDPOINT} (${LOCAL_HOST}:${LOCAL_PORT})`)
 
   restoreAsideDogfoodDevVars()
-  await assertPortFree(LOCAL_HOST, LOCAL_PORT)
+  await assertPortFreeOrFailLoud(LOCAL_HOST, LOCAL_PORT)
   log(`포트 여유 확인 OK ${LOCAL_HOST}:${LOCAL_PORT}`)
   const { bootNonce } = ensureDogfoodVars()
   prepareDogfoodRuntime()
   applyMigrations()
-  const child = startWranglerDev(bootNonce)
+
+  const { supervisor } = await startWranglerDev(bootNonce)
   try {
-    await waitDogfoodHealthcheck(child, bootNonce)
+    await waitDogfoodHealthcheck(bootNonce)
     viteBuild()
     prepareChromeProfile()
-    const live = readLiveProcess(child.pid)
-    if (live == null) throw new Error('부트 직후 wrangler 프로세스 없음')
-    child.unref()
+    supervisor.unref()
   } catch (err) {
     let cleanupErr = /** @type {unknown} */ (null)
     try {
-      // health 이전 실패면 health 결합 생략, 보존 child/PID identity 로 cleanup
-      await cleanupFailedBoot({ skipHealth: true })
+      requestOwnedStop(STOP_PATH, bootNonce)
+      await waitOwnedStopComplete(STOP_PATH, 20_000)
+      log('부트 실패 cleanup: owned stop 완료')
     } catch (ce) {
       cleanupErr = ce
     }
@@ -342,8 +342,8 @@ async function main() {
     }
     throw err
   }
-  log('부트스트랩 완료. wrangler 는 백그라운드에서 계속 동작한다.')
-  log(`중지: identity PID 메타 ${PID_PATH}`)
+  log('부트스트랩 완료. wrangler 는 supervise 가 소유한다.')
+  log(`중지: stop 신호 ${STOP_PATH} (진단 PID ${PID_PATH})`)
 }
 
 main().catch((err) => {

@@ -10,8 +10,10 @@ export const LOCAL_PORT = 8787
 export const LOCAL_UPLOAD_ENDPOINT = `http://${LOCAL_HOST}:${LOCAL_PORT}`
 export const DOGFOOD_VARS_FILENAME = '.dev.vars.dogfood'
 export const DOGFOOD_LOCAL_MARKER = '1'
-/** OS CreationDate 해상도용 — Date.now() 60초 허용 금지 */
-export const CREATION_DATE_MAX_SKEW_MS = 2000
+/** V4: stale PID 기반 destructive kill 완전 제거 */
+export const STALE_PID_KILL_DISABLED = true
+/** 진단 비교용(kill 근거 아님). exact CreationDate 만 허용 */
+export const CREATION_DATE_MAX_SKEW_MS = 0
 
 
 /** M2: generic worker/.dev.vars 는 이동·삭제 금지. runtime cwd + --env-file 만. */
@@ -383,22 +385,32 @@ export function assertInvalidTokenRetrySequence(requests, baseUrl = LOCAL_UPLOAD
 }
 
 /**
- * @param {{ pid: number, startedAtMs: number, cmd: string, bootNonce: string, identity?: CommandIdentity }} meta
+ * 진단용 PID 메타 — kill 근거 아님.
+ * @param {{
+ *   pid: number,
+ *   supervisorPid?: number,
+ *   bootNonce: string,
+ *   cmd: string,
+ *   startedAtMs?: number,
+ *   identity?: CommandIdentity
+ * }} meta
  */
 export function serializePidMeta(meta) {
   if (!Number.isInteger(meta.pid) || meta.pid <= 0) throw new Error('pid 메타 오류')
   if (typeof meta.bootNonce !== 'string' || meta.bootNonce.length < 16) {
     throw new Error('pid 메타 bootNonce 필요')
   }
-  const identity =
-    meta.identity ??
-    normalizeCommandIdentity(meta.cmd, {
-      cwd: meta.identity?.cwd
-    })
-  if (!identity.cwd || identity.cwd.length === 0) {
-    throw new Error('pid 메타 identity.cwd 필요')
-  }
-  return JSON.stringify({ ...meta, identity })
+  return JSON.stringify({
+    kind: 'dogfood-diagnostic',
+    stalePidKillDisabled: STALE_PID_KILL_DISABLED,
+    pid: meta.pid,
+    supervisorPid: meta.supervisorPid ?? null,
+    bootNonce: meta.bootNonce,
+    cmd: meta.cmd,
+    startedAtMs: meta.startedAtMs ?? null,
+    identity: meta.identity ?? null,
+    note: '진단 전용. stale PID kill 금지. 종료는 supervise stop 신호(nonce)만.'
+  })
 }
 
 /**
@@ -422,7 +434,91 @@ function normalizePathToken(p) {
 }
 
 /**
- * wrangler 소유 명령 식별자 — 부분 문자열 includes('wrangler') 금지.
+ * @param {string} p
+ */
+export function quoteCmdArg(p) {
+  if (p.length === 0) return '""'
+  if (/[\s"]/g.test(p)) return `"${p.replace(/"/g, '\\"')}"`
+  return p
+}
+
+/**
+ * @param {string} executable
+ * @param {string[]} argv
+ */
+export function formatDiagnosticCommand(executable, argv) {
+  return [quoteCmdArg(executable), ...argv.map(quoteCmdArg)].join(' ')
+}
+
+/**
+ * 분리된 executable/argv 로 identity 생성 — 공백 경로 안전.
+ * @param {string} executable
+ * @param {string[]} argv
+ * @param {{ cwd?: string }} [opts]
+ * @returns {CommandIdentity}
+ */
+export function buildCommandIdentityFromArgv(executable, argv, opts = {}) {
+  if (typeof executable !== 'string' || executable.trim().length === 0) {
+    throw new Error('executable 없음 — fail-closed')
+  }
+  if (!Array.isArray(argv)) throw new Error('argv 배열 필요')
+  const nodeExecutable = normalizePathToken(executable)
+  if (!/node(\.exe)?$/i.test(nodeExecutable)) {
+    throw new Error(`node executable 아님: ${executable}`)
+  }
+  const tokens = argv.map((a) => String(a).replace(/\\/g, '/'))
+  const wranglerEntryRaw = tokens.find((t) => /\/wrangler\/bin\/wrangler\.js$/i.test(t))
+  if (!wranglerEntryRaw) {
+    throw new Error('wrangler 진입 파일 없음(정확한 경로 필요)')
+  }
+  const wranglerEntry = normalizePathToken(wranglerEntryRaw)
+  const wranglerIdx = tokens.findIndex((t) => /\/wrangler\/bin\/wrangler\.js$/i.test(t))
+  const subcommand = tokens[wranglerIdx + 1]
+  if (subcommand !== 'dev') {
+    throw new Error(`subcommand 가 dev 아님: ${subcommand}`)
+  }
+  const ipIdx = tokens.indexOf('--ip')
+  if (ipIdx < 0 || ipIdx + 1 >= tokens.length) throw new Error('명령에 --ip 없음')
+  const ip = tokens[ipIdx + 1]
+  if (ip !== LOCAL_HOST) throw new Error(`--ip 가 ${LOCAL_HOST} 가 아님: ${ip}`)
+  const portIdx = tokens.indexOf('--port')
+  if (portIdx < 0 || portIdx + 1 >= tokens.length) throw new Error('명령에 --port 없음')
+  const port = tokens[portIdx + 1]
+  if (port !== String(LOCAL_PORT)) throw new Error(`--port 가 ${LOCAL_PORT} 가 아님: ${port}`)
+  if (!tokens.includes('--local')) throw new Error('명령에 --local 없음')
+  const envIdx = tokens.indexOf('--env-file')
+  if (envIdx < 0 || envIdx + 1 >= tokens.length) throw new Error('명령에 --env-file 없음')
+  const envFile = tokens[envIdx + 1].split('/').pop() ?? ''
+  if (envFile !== DOGFOOD_VARS_FILENAME) {
+    throw new Error(`--env-file 값이 ${DOGFOOD_VARS_FILENAME} 가 아님: ${envFile}`)
+  }
+  let cwd = typeof opts.cwd === 'string' ? normalizePathToken(opts.cwd) : ''
+  if (!cwd) {
+    const persistIdx = tokens.indexOf('--persist-to')
+    if (persistIdx >= 0 && persistIdx + 1 < tokens.length) {
+      const persist = normalizePathToken(tokens[persistIdx + 1])
+      const marker = '/.dogfood-runtime/'
+      const at = persist.indexOf(marker)
+      if (at >= 0) cwd = persist.slice(0, at + '/.dogfood-runtime'.length)
+    }
+  }
+  if (!cwd || !cwd.endsWith('.dogfood-runtime')) {
+    throw new Error(`runtime cwd 식별 실패: ${cwd}`)
+  }
+  return {
+    nodeExecutable,
+    wranglerEntry,
+    subcommand: 'dev',
+    ip,
+    port,
+    hasLocalFlag: true,
+    envFile,
+    cwd
+  }
+}
+
+/**
+ * 레거시/진단 — 따옴표 토큰 파싱 후 buildCommandIdentityFromArgv 위임.
  * @param {string} cmd
  * @param {{ cwd?: string }} [opts]
  * @returns {CommandIdentity}
@@ -435,82 +531,10 @@ export function normalizeCommandIdentity(cmd, opts = {}) {
   const re = /"([^"]+)"|(\S+)/g
   let m
   while ((m = re.exec(cmd)) !== null) {
-    tokens.push((m[1] ?? m[2]).replace(/\\/g, '/'))
+    tokens.push(m[1] ?? m[2])
   }
-  if (tokens.length < 2) {
-    throw new Error(`명령 토큰 부족: ${cmd}`)
-  }
-  const nodeExecutable = normalizePathToken(tokens[0])
-  if (!/node(\.exe)?$/i.test(nodeExecutable)) {
-    throw new Error(`node executable 아님: ${tokens[0]}`)
-  }
-  const wranglerEntryRaw = tokens.find((t) => /\/wrangler\/bin\/wrangler\.js$/i.test(t))
-  if (!wranglerEntryRaw) {
-    throw new Error(`wrangler 진입 파일 없음(정확한 경로 필요): ${cmd}`)
-  }
-  const wranglerEntry = normalizePathToken(wranglerEntryRaw)
-  const wranglerIdx = tokens.findIndex((t) => /\/wrangler\/bin\/wrangler\.js$/i.test(t))
-  const subcommand = tokens[wranglerIdx + 1]
-  if (subcommand !== 'dev') {
-    throw new Error(`subcommand 가 dev 아님: ${subcommand}`)
-  }
-  const ipIdx = tokens.indexOf('--ip')
-  if (ipIdx < 0 || ipIdx + 1 >= tokens.length) {
-    throw new Error('명령에 --ip 없음')
-  }
-  const ip = tokens[ipIdx + 1]
-  if (ip !== LOCAL_HOST) {
-    throw new Error(`--ip 가 ${LOCAL_HOST} 가 아님: ${ip}`)
-  }
-  const portIdx = tokens.indexOf('--port')
-  if (portIdx < 0 || portIdx + 1 >= tokens.length) {
-    throw new Error('명령에 --port 없음')
-  }
-  const port = tokens[portIdx + 1]
-  if (port !== String(LOCAL_PORT)) {
-    throw new Error(`--port 가 ${LOCAL_PORT} 가 아님: ${port}`)
-  }
-  if (!tokens.includes('--local')) {
-    throw new Error('명령에 --local 없음')
-  }
-  const envIdx = tokens.indexOf('--env-file')
-  if (envIdx < 0 || envIdx + 1 >= tokens.length) {
-    throw new Error('명령에 --env-file 없음')
-  }
-  const envFile = tokens[envIdx + 1].split('/').pop() ?? ''
-  if (envFile !== DOGFOOD_VARS_FILENAME) {
-    throw new Error(`--env-file 값이 ${DOGFOOD_VARS_FILENAME} 가 아님: ${envFile}`)
-  }
-  let cwd = typeof opts.cwd === 'string' ? normalizePathToken(opts.cwd) : ''
-  if (!cwd) {
-    const persistIdx = tokens.indexOf('--persist-to')
-    if (persistIdx >= 0 && persistIdx + 1 < tokens.length) {
-      const persist = normalizePathToken(tokens[persistIdx + 1])
-      const marker = '/.dogfood-runtime/'
-      const at = persist.indexOf(marker)
-      if (at >= 0) {
-        cwd = persist.slice(0, at + '/.dogfood-runtime'.length)
-      } else if (persist.endsWith('/.dogfood-runtime') || persist.endsWith('.dogfood-runtime')) {
-        cwd = persist
-      }
-    }
-  }
-  if (!cwd) {
-    throw new Error('runtime cwd 식별 실패(dogfood-runtime 필요)')
-  }
-  if (!cwd.endsWith('.dogfood-runtime')) {
-    throw new Error(`runtime cwd 가 .dogfood-runtime 이 아님: ${cwd}`)
-  }
-  return {
-    nodeExecutable,
-    wranglerEntry,
-    subcommand: 'dev',
-    ip,
-    port,
-    hasLocalFlag: true,
-    envFile,
-    cwd
-  }
+  if (tokens.length < 2) throw new Error(`명령 토큰 부족: ${cmd}`)
+  return buildCommandIdentityFromArgv(tokens[0], tokens.slice(1), opts)
 }
 
 /**
@@ -536,36 +560,30 @@ export function commandIdentitiesEqual(a, b) {
 export function parsePidMeta(text) {
   const trimmed = text.trim()
   if (/^\d+$/.test(trimmed)) {
-    throw new Error('구형 PID 파일(숫자만) — identity 메타 없음. dogfood:up 을 다시 실행하라')
+    throw new Error('구형 PID 파일(숫자만) — dogfood:up 을 다시 실행하라')
   }
   const raw = JSON.parse(trimmed)
   if (
     !raw ||
     typeof raw !== 'object' ||
     !Number.isInteger(raw.pid) ||
-    typeof raw.startedAtMs !== 'number' ||
-    typeof raw.cmd !== 'string' ||
     typeof raw.bootNonce !== 'string'
   ) {
     throw new Error('PID 메타 형식 오류')
   }
-  const identity =
-    raw.identity && typeof raw.identity === 'object' && typeof raw.identity.cwd === 'string'
-      ? /** @type {CommandIdentity} */ (raw.identity)
-      : normalizeCommandIdentity(raw.cmd, {
-          cwd: raw.identity && typeof raw.identity.cwd === 'string' ? raw.identity.cwd : undefined
-        })
   return {
     pid: raw.pid,
-    startedAtMs: raw.startedAtMs,
-    cmd: raw.cmd,
+    supervisorPid: typeof raw.supervisorPid === 'number' ? raw.supervisorPid : null,
+    startedAtMs: typeof raw.startedAtMs === 'number' ? raw.startedAtMs : null,
+    cmd: typeof raw.cmd === 'string' ? raw.cmd : '',
     bootNonce: raw.bootNonce,
-    identity
+    identity: raw.identity ?? null,
+    kind: raw.kind ?? null
   }
 }
 
 /**
- * live.startedAtMs·cmd 필수. Date.now() 60초 허용창 금지.
+ * 진단 비교 전용 — destructive kill 근거로 사용 금지.
  * @param {{ pid: number, startedAtMs: number, cmd: string, identity?: CommandIdentity }} expected
  * @param {{ pid: number, startedAtMs?: number, cmd?: string } | null} live
  */
@@ -573,27 +591,18 @@ export function assertProcessIdentityMatch(expected, live) {
   if (live == null) throw new Error(`프로세스 없음 pid=${expected.pid} (stale)`)
   if (live.pid !== expected.pid) throw new Error('PID 불일치')
   if (typeof live.startedAtMs !== 'number' || !Number.isFinite(live.startedAtMs)) {
-    throw new Error('live 시작 시각을 읽지 못함 — fail-closed (종료 거부)')
+    throw new Error('live 시작 시각을 읽지 못함')
   }
   if (typeof live.cmd !== 'string' || live.cmd.trim().length === 0) {
-    throw new Error('live 명령줄을 읽지 못함 — fail-closed (종료 거부)')
+    throw new Error('live 명령줄을 읽지 못함')
   }
   if (Math.abs(live.startedAtMs - expected.startedAtMs) > CREATION_DATE_MAX_SKEW_MS) {
-    throw new Error(
-      `프로세스 시작 시각이 PID 메타와 어긋남(≤${CREATION_DATE_MAX_SKEW_MS}ms) — stale/재사용 가능`
-    )
+    throw new Error('프로세스 시작 시각이 PID 메타와 어긋남')
   }
   const expectedId =
     expected.identity ??
     normalizeCommandIdentity(expected.cmd, { cwd: expected.identity?.cwd })
-  let liveId
-  try {
-    liveId = normalizeCommandIdentity(live.cmd, { cwd: expectedId.cwd })
-  } catch (err) {
-    throw new Error(
-      `live 명령 identity 검증 실패(종료 거부): ${err instanceof Error ? err.message : err}`
-    )
-  }
+  const liveId = normalizeCommandIdentity(live.cmd, { cwd: expectedId.cwd })
   if (!commandIdentitiesEqual(expectedId, liveId)) {
     throw new Error(
       `명령 identity 불일치 — expected=${JSON.stringify(expectedId)} live=${JSON.stringify(liveId)}`

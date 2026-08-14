@@ -50,6 +50,8 @@ tests/e2e/dogfood/profile/
 tests/e2e/dogfood/logs/
 tests/e2e/dogfood/fixtures/out/
 .dogfood-wrangler.pid
+.dogfood-stop
+.dogfood-supervise.json
 worker/.dev.vars.dogfood
 worker/.dev.vars.aside-dogfood-*
 worker/.dogfood-runtime/

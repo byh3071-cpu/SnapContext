@@ -109,7 +109,7 @@ describe('R2 B2 PID identity', () => {
         cmd: 'notepad.exe',
         startedAtMs: meta.startedAtMs
       })
-    ).toThrow(/wrangler|identity|종료 거부/)
+    ).toThrow(/wrangler|identity|종료 거부|토큰 부족|executable/)
   })
 })
 

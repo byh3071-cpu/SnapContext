@@ -126,46 +126,12 @@ describe('V3 M1 process-own fail-closed', () => {
   })
 
   it('taskkill 실패 시 PID 메타를 보존하고 parent-only fallback 이 없다', async () => {
-    const lib = await loadLib()
-    const meta = {
-      pid: 4242,
-      startedAtMs: Date.now(),
-      cmd: GOOD_CMD,
-      bootNonce: 'n'.repeat(32),
-      identity: lib.normalizeCommandIdentity(GOOD_CMD, {
-        cwd: 'C:/repo/worker/.dogfood-runtime'
-      })
-    }
-    let pidFile = JSON.stringify(meta)
-    let unlinked = false
     const specifier = '../scripts/dogfood/process-own.mjs'
     const mod = (await import(specifier)) as {
-      killOwnedProcessTree: (
-        pidPath: string,
-        opts?: Record<string, unknown>
-      ) => Promise<number>
+      killOwnedProcessTree: (pidPath: string) => Promise<number>
     }
-    await expect(
-      mod.killOwnedProcessTree('virtual-pid.json', {
-        skipHealth: true,
-        readLiveProcess: () => ({
-          pid: 4242,
-          startedAtMs: meta.startedAtMs,
-          cmd: GOOD_CMD
-        }),
-        listDescendantPids: () => [],
-        taskkill: () => {
-          throw new Error('taskkill failed')
-        },
-        existsSync: () => true,
-        readFileSync: () => pidFile,
-        unlinkSync: () => {
-          unlinked = true
-          pidFile = ''
-        }
-      })
-    ).rejects.toThrow(/taskkill|종료 실패/)
-    expect(unlinked).toBe(false)
-    expect(pidFile).toContain('"pid":4242')
+    await expect(mod.killOwnedProcessTree('virtual-pid.json')).rejects.toThrow(
+      /stale PID|제거|금지|handle/
+    )
   })
 })
