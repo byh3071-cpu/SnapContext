@@ -1,9 +1,13 @@
 /**
- * dogfood process helpers (V4: handle-owned terminate only, no stale-PID kill).
+ * dogfood process helpers (V5: ChildProcess.kill handle-only, no taskkill).
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { LOCAL_HOST, LOCAL_PORT, STALE_PID_KILL_DISABLED, parsePidMeta } from './lib.mjs'
+
+export const TASKKILL_FORBIDDEN = true
+export const HANDLE_ONLY_TERMINATE = true
 
 /**
  * @param {number} ms
@@ -18,10 +22,7 @@ function defaultSleep(ms) {
  * @returns {string} stdout trim
  */
 export function runPowerShellStrict(script) {
-  const wrapped = [
-    "$ErrorActionPreference = 'Stop'",
-    script
-  ].join('\n')
+  const wrapped = ["$ErrorActionPreference = 'Stop'", script].join('\n')
   try {
     return execFileSync('powershell', ['-NoProfile', '-Command', wrapped], {
       encoding: 'utf8',
@@ -100,27 +101,38 @@ export function listDescendantPids(parentPid) {
 }
 
 /**
+ * PowerShell 내부에서 empty → "no". JS 오류 메시지 문자열 매칭 없음.
+ * cmdlet 실패는 runPowerShellStrict 가 throw.
  * @param {number} [port]
  * @param {string} [host]
  * @returns {boolean}
  */
 export function hasPortListener(port = LOCAL_PORT, host = LOCAL_HOST) {
-  try {
-    const out = runPowerShellStrict(
-      [
-        `$c = @(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction Stop |`,
-        `  Where-Object { $_.LocalAddress -eq '${host}' -or $_.LocalAddress -eq '0.0.0.0' -or $_.LocalAddress -eq '::' })`,
-        `if ($c.Count -gt 0) { 'yes' } else { 'no' }`
-      ].join('\n')
-    )
-    return out === 'yes'
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    if (/No matching|MSFT_NetTCPConnection|not find|개체를 찾을 수 없습니다/i.test(msg)) {
-      return false
-    }
-    throw err
+  const out = runPowerShellStrict(
+    [
+      `$port = ${port}`,
+      `$hostAddr = '${host}'`,
+      `try {`,
+      `  $all = @(Get-NetTCPConnection -State Listen -ErrorAction Stop)`,
+      `} catch [Microsoft.PowerShell.Cmdletization.Cim.CimJobException] {`,
+      `  if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { Write-Output 'no'; return }`,
+      `  throw`,
+      `} catch {`,
+      `  if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { Write-Output 'no'; return }`,
+      `  throw`,
+      `}`,
+      `$c = @($all | Where-Object {`,
+      `  $_.LocalPort -eq $port -and (`,
+      `    $_.LocalAddress -eq $hostAddr -or $_.LocalAddress -eq '0.0.0.0' -or $_.LocalAddress -eq '::'`,
+      `  )`,
+      `})`,
+      `if ($c.Count -gt 0) { 'yes' } else { 'no' }`
+    ].join('\n')
+  )
+  if (out !== 'yes' && out !== 'no') {
+    throw new Error(`hasPortListener 예상치 못한 stdout: ${out}`)
   }
+  return out === 'yes'
 }
 
 /**
@@ -147,9 +159,11 @@ export function describePortOccupancy(pidPath, port = LOCAL_PORT, host = LOCAL_H
   try {
     const out = runPowerShellStrict(
       [
-        `$c = @(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction Stop |`,
-        `  Where-Object { $_.LocalAddress -eq '${host}' -or $_.LocalAddress -eq '0.0.0.0' -or $_.LocalAddress -eq '::' } |`,
-        `  Select-Object -First 5 OwningProcess, LocalAddress)`,
+        `$port = ${port}`,
+        `$hostAddr = '${host}'`,
+        `try { $all = @(Get-NetTCPConnection -State Listen -ErrorAction Stop) }`,
+        `catch { if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { Write-Output ''; return }; throw }`,
+        `$c = @($all | Where-Object { $_.LocalPort -eq $port -and ($_.LocalAddress -eq $hostAddr -or $_.LocalAddress -eq '0.0.0.0' -or $_.LocalAddress -eq '::') } | Select-Object -First 5 OwningProcess, LocalAddress)`,
         `($c | ForEach-Object { "listener pid=$($_.OwningProcess) addr=$($_.LocalAddress)" }) -join '; '`
       ].join('\n')
     )
@@ -182,49 +196,81 @@ export async function waitProcessGone(pid, timeoutMs = 15_000, opts = {}) {
 }
 
 /**
- * @param {number[]} pids
- * @param {number} [timeoutMs]
- * @param {Parameters<typeof waitProcessGone>[2]} [opts]
- */
-export async function waitAllGone(pids, timeoutMs = 15_000, opts = {}) {
-  for (const pid of pids) {
-    await waitProcessGone(pid, timeoutMs, opts)
-  }
-}
-
-/**
- * 현재 프로세스가 spawn 한 child handle 로만 tree 종료.
+ * ChildProcess handle 로만 종료. taskkill/숫자 PID OS 호출 금지.
+ * descendant 는 직접 죽이지 않음 — wrangler graceful 대기.
+ * 종료 후 8787 listener 잔존 시 fail-loud (죽이지 않음).
+ *
  * @param {{
- *   child: { pid?: number | null, kill?: (signal?: string) => boolean },
- *   descendantPids: number[],
+ *   child: {
+ *     pid?: number | null,
+ *     exitCode: number | null,
+ *     signalCode?: NodeJS.Signals | null,
+ *     kill: (signal?: NodeJS.Signals | string) => boolean
+ *   },
+ *   descendantPids?: number[],
  *   pidPath?: string,
- *   taskkill?: (pid: number) => void,
+ *   hasPortListener?: typeof hasPortListener,
  *   sleep?: (ms: number) => Promise<void>
  * }} owned
  */
 export async function terminateOwnedChildTree(owned) {
-  const pid = owned.child.pid
+  if (!HANDLE_ONLY_TERMINATE || !TASKKILL_FORBIDDEN) {
+    throw new Error('handle-only terminate 정책 위반')
+  }
+  const child = owned.child
+  const pid = child.pid
   if (pid == null || !Number.isInteger(pid) || pid <= 0) {
     throw new Error('owned child pid 없음 — 종료 거부')
   }
-  const runTaskkill =
-    owned.taskkill ??
-    ((target) => {
-      execFileSync('taskkill', ['/F', '/T', '/PID', String(target)], { stdio: 'ignore' })
-    })
-  try {
-    runTaskkill(pid)
-  } catch (err) {
+  const sleep = owned.sleep ?? defaultSleep
+  const portCheck = owned.hasPortListener ?? hasPortListener
+
+  const isExited = () => child.exitCode !== null || child.signalCode != null
+
+  if (!isExited()) {
+    try {
+      child.kill('SIGTERM')
+    } catch (err) {
+      throw new Error(
+        `child.kill(SIGTERM) 실패: ${err instanceof Error ? err.message : err}`
+      )
+    }
+    const softDeadline = Date.now() + 5_000
+    while (Date.now() < softDeadline) {
+      if (isExited()) break
+      await sleep(100)
+    }
+    if (!isExited()) {
+      try {
+        child.kill('SIGKILL')
+      } catch (err) {
+        throw new Error(
+          `child.kill(SIGKILL) 실패: ${err instanceof Error ? err.message : err}`
+        )
+      }
+    }
+    // 숫자 PID 재조회 금지 — ChildProcess exit 상태만 대기
+    const hardDeadline = Date.now() + 15_000
+    while (Date.now() < hardDeadline) {
+      if (isExited()) break
+      await sleep(100)
+    }
+    if (!isExited()) {
+      throw new Error(`child handle exit 미확인 pid=${pid}`)
+    }
+  }
+  // alreadyDead: kill 호출·숫자 PID 대기 모두 금지 (재사용 TOCTOU)
+
+  // descendant 직접 kill 금지 — graceful 후에도 listener 남으면 fail-loud
+  if (portCheck(LOCAL_PORT, LOCAL_HOST)) {
+    const leftover = owned.descendantPids?.length
+      ? `잔존 가능 descendant=[${owned.descendantPids.join(',')}]`
+      : 'descendant 목록 없음'
     throw new Error(
-      `owned taskkill 실패 pid=${pid}: ${err instanceof Error ? err.message : err}`
+      `포트 ${LOCAL_HOST}:${LOCAL_PORT} listener 잔존 — 프로세스를 죽이지 않고 실패한다. ${leftover}. 사람이 정리하라.`
     )
   }
-  const sleep = owned.sleep ?? defaultSleep
-  await waitProcessGone(pid, 15_000, { sleep })
-  await waitAllGone(owned.descendantPids, 15_000, { sleep })
-  if (hasPortListener(LOCAL_PORT, LOCAL_HOST)) {
-    throw new Error(`포트 ${LOCAL_HOST}:${LOCAL_PORT} listener 잔존 — owned 종료 미완`)
-  }
+
   if (owned.pidPath && existsSync(owned.pidPath)) {
     unlinkSync(owned.pidPath)
   }
@@ -232,30 +278,29 @@ export async function terminateOwnedChildTree(owned) {
 }
 
 /**
- * @deprecated V4: stale PID kill 제거. 항상 거부.
+ * @deprecated V4+: stale PID kill 제거.
  * @param {string} _pidPath
  */
 export async function killOwnedProcessTree(_pidPath) {
   if (STALE_PID_KILL_DISABLED) {
     throw new Error(
-      'stale PID 기반 kill 경로 제거됨 — 현재 프로세스가 보유한 child handle(terminateOwnedChildTree) 또는 supervise stop 신호만 허용'
+      'stale PID 기반 kill 경로 제거됨 — ChildProcess.kill handle 또는 supervise stop 신호만 허용'
     )
   }
   throw new Error('unreachable')
 }
 
 /**
- * supervise 에 nonce stop 요청 (다른 프로세스에서 handle 없이 종료 요청).
+ * stop 파일 atomic 게시 (temp write + rename).
  * @param {string} stopPath
  * @param {string} bootNonce
  */
 export function requestOwnedStop(stopPath, bootNonce) {
   if (!bootNonce || bootNonce.length < 16) throw new Error('stop nonce 필요')
-  writeFileSync(
-    stopPath,
-    JSON.stringify({ nonce: bootNonce, at: Date.now() }),
-    'utf8'
-  )
+  const dir = dirname(stopPath)
+  const tmp = join(dir, `.dogfood-stop.${process.pid}.${Date.now()}.tmp`)
+  writeFileSync(tmp, JSON.stringify({ nonce: bootNonce, at: Date.now() }), 'utf8')
+  renameSync(tmp, stopPath)
 }
 
 /**

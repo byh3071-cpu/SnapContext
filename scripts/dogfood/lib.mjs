@@ -583,35 +583,6 @@ export function parsePidMeta(text) {
 }
 
 /**
- * 진단 비교 전용 — destructive kill 근거로 사용 금지.
- * @param {{ pid: number, startedAtMs: number, cmd: string, identity?: CommandIdentity }} expected
- * @param {{ pid: number, startedAtMs?: number, cmd?: string } | null} live
- */
-export function assertProcessIdentityMatch(expected, live) {
-  if (live == null) throw new Error(`프로세스 없음 pid=${expected.pid} (stale)`)
-  if (live.pid !== expected.pid) throw new Error('PID 불일치')
-  if (typeof live.startedAtMs !== 'number' || !Number.isFinite(live.startedAtMs)) {
-    throw new Error('live 시작 시각을 읽지 못함')
-  }
-  if (typeof live.cmd !== 'string' || live.cmd.trim().length === 0) {
-    throw new Error('live 명령줄을 읽지 못함')
-  }
-  if (Math.abs(live.startedAtMs - expected.startedAtMs) > CREATION_DATE_MAX_SKEW_MS) {
-    throw new Error('프로세스 시작 시각이 PID 메타와 어긋남')
-  }
-  const expectedId =
-    expected.identity ??
-    normalizeCommandIdentity(expected.cmd, { cwd: expected.identity?.cwd })
-  const liveId = normalizeCommandIdentity(live.cmd, { cwd: expectedId.cwd })
-  if (!commandIdentitiesEqual(expectedId, liveId)) {
-    throw new Error(
-      `명령 identity 불일치 — expected=${JSON.stringify(expectedId)} live=${JSON.stringify(liveId)}`
-    )
-  }
-}
-
-/**
- * probe kill 전 boot nonce 로 /dogfood-health 소유권 결합.
  * @param {string} bootNonce
  * @param {{ fetchFn?: typeof auditedFetch, recorder?: string[] }} [opts]
  */

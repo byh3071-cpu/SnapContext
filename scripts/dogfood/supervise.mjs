@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * dogfood supervise — wrangler child handle 소유. stop 파일(nonce)로만 종료.
+ * dogfood supervise — wrangler ChildProcess handle 소유 (V5 handle-only).
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   buildCommandIdentityFromArgv,
@@ -47,52 +47,16 @@ async function main() {
   })
   const cmd = formatDiagnosticCommand(execPath, [wranglerJs, ...wranglerArgs])
 
-  const child = spawn(execPath, [wranglerJs, ...wranglerArgs], {
-    cwd: runtimeDir,
-    stdio: 'ignore',
-    env: process.env,
-    windowsHide: true,
-    detached: false
-  })
-  if (child.pid == null) throw new Error('wrangler pid 없음')
+  /** @type {import('node:child_process').ChildProcess | null} */
+  let child = null
+  /** @type {number[]} */
+  let descendantPids = []
+  let cleaned = false
 
-  let live = null
-  for (let i = 0; i < 40; i++) {
-    try {
-      live = readLiveProcess(child.pid)
-      if (live != null) break
-    } catch {
-      // 등록 전 — async 재시도
-    }
-    await sleep(50)
-  }
-  if (live == null) {
-    try {
-      child.kill()
-    } catch {
-      /* ignore */
-    }
-    throw new Error(`spawn 직후 live 조회 실패 pid=${child.pid}`)
-  }
-
-  await sleep(300)
-  const descendantPids = listDescendantPids(child.pid)
-
-  writeFileSync(
-    pidPath,
-    serializePidMeta({
-      pid: child.pid,
-      supervisorPid: process.pid,
-      startedAtMs: live.startedAtMs,
-      cmd: live.cmd || cmd,
-      bootNonce,
-      identity
-    }),
-    'utf8'
-  )
-
-  const shutdown = async (reason) => {
-    console.error(`[dogfood:supervise] 종료 시작: ${reason}`)
+  const cleanupOwned = async (reason) => {
+    if (cleaned || child == null) return
+    cleaned = true
+    console.error(`[dogfood:supervise] cleanup: ${reason}`)
     await terminateOwnedChildTree({
       child,
       descendantPids,
@@ -107,36 +71,107 @@ async function main() {
     }
   }
 
-  child.on('exit', () => {
-    console.error('[dogfood:supervise] wrangler exit 감지')
-  })
+  try {
+    child = spawn(execPath, [wranglerJs, ...wranglerArgs], {
+      cwd: runtimeDir,
+      stdio: 'ignore',
+      env: process.env,
+      windowsHide: true,
+      detached: false
+    })
+    if (child.pid == null) throw new Error('wrangler pid 없음')
 
-  while (true) {
-    if (existsSync(stopPath)) {
-      let req
+    let live = null
+    for (let i = 0; i < 40; i++) {
       try {
-        req = JSON.parse(readFileSync(stopPath, 'utf8'))
-      } catch (err) {
-        throw new Error(
-          `stop 파일 파싱 실패: ${err instanceof Error ? err.message : err}`
+        live = readLiveProcess(child.pid)
+        if (live != null) break
+      } catch {
+        // 등록 전 — async 재시도
+      }
+      await sleep(50)
+    }
+    if (live == null) {
+      throw new Error(`spawn 직후 live 조회 실패 pid=${child.pid}`)
+    }
+
+    await sleep(300)
+    descendantPids = listDescendantPids(child.pid)
+
+    writeFileSync(
+      pidPath,
+      serializePidMeta({
+        pid: child.pid,
+        supervisorPid: process.pid,
+        startedAtMs: live.startedAtMs,
+        cmd: live.cmd || cmd,
+        bootNonce,
+        identity
+      }),
+      'utf8'
+    )
+
+    while (true) {
+      // V5: child 종료 검사를 stop 파일보다 먼저
+      if (child.exitCode != null || child.signalCode != null) {
+        cleaned = true
+        if (existsSync(pidPath)) {
+          try {
+            unlinkSync(pidPath)
+          } catch {
+            /* ignore */
+          }
+        }
+        if (existsSync(stopPath)) {
+          try {
+            unlinkSync(stopPath)
+          } catch {
+            /* ignore */
+          }
+        }
+        return
+      }
+
+      if (existsSync(stopPath)) {
+        let req = null
+        try {
+          req = JSON.parse(readFileSync(stopPath, 'utf8'))
+        } catch {
+          console.error('[dogfood:supervise] stop 파일 파싱 실패 — 무시하고 계속')
+          await sleep(200)
+          continue
+        }
+        if (!req || req.nonce !== bootNonce) {
+          console.error('[dogfood:supervise] stop nonce 불일치 — 무시하고 계속')
+          try {
+            unlinkSync(stopPath)
+          } catch {
+            /* ignore */
+          }
+          await sleep(200)
+          continue
+        }
+        await cleanupOwned('stop-signal')
+        return
+      }
+      await sleep(200)
+    }
+  } finally {
+    if (!cleaned && child != null) {
+      try {
+        await cleanupOwned('finally')
+      } catch (cleanupErr) {
+        console.error(
+          '[dogfood:supervise] finally cleanup 실패:',
+          cleanupErr instanceof Error ? cleanupErr.message : cleanupErr
         )
+        throw cleanupErr
       }
-      if (req.nonce !== bootNonce) {
-        throw new Error('stop nonce 불일치 — 종료 거부')
-      }
-      await shutdown('stop-signal')
-      return
     }
-    if (child.exitCode != null || child.signalCode != null) {
-      if (existsSync(pidPath)) unlinkSync(pidPath)
-      if (existsSync(stopPath)) unlinkSync(stopPath)
-      return
-    }
-    await sleep(200)
   }
 }
 
-main().catch(async (err) => {
+main().catch((err) => {
   console.error('[dogfood:supervise] 실패:', err instanceof Error ? err.message : err)
   process.exitCode = 1
 })

@@ -46,10 +46,6 @@ interface Lib {
     cwd: string
     hasLocalFlag: boolean
   }
-  assertProcessIdentityMatch: (
-    expected: { pid: number; startedAtMs: number; cmd: string; identity?: unknown },
-    live: { pid: number; startedAtMs?: number; cmd?: string } | null
-  ) => void
   healthcheckUrl: () => string
 }
 
@@ -78,9 +74,8 @@ describe('R2 B2 PID identity', () => {
     expect(() => parsePidMeta('13304')).toThrow(/구형 PID|identity/)
   })
 
-  it('identity 일치만 통과한다', async () => {
-    const { serializePidMeta, parsePidMeta, assertProcessIdentityMatch, normalizeCommandIdentity } =
-      await loadLib()
+  it('진단 PID 메타를 직렬화·파싱한다', async () => {
+    const { serializePidMeta, parsePidMeta, normalizeCommandIdentity } = await loadLib()
     const cmd =
       '"C:/n/node.exe" C:/n/node_modules/wrangler/bin/wrangler.js dev --ip 127.0.0.1 --port 8787 --local --env-file .dev.vars.dogfood --persist-to C:/n/worker/.dogfood-runtime/.wrangler/state'
     const identity = normalizeCommandIdentity(cmd, {
@@ -95,21 +90,7 @@ describe('R2 B2 PID identity', () => {
     }
     const parsed = parsePidMeta(serializePidMeta(meta))
     expect(parsed.pid).toBe(4242)
-    expect(() =>
-      assertProcessIdentityMatch(meta, {
-        pid: 4242,
-        cmd,
-        startedAtMs: meta.startedAtMs
-      })
-    ).not.toThrow()
-    expect(() => assertProcessIdentityMatch(meta, null)).toThrow(/stale/)
-    expect(() =>
-      assertProcessIdentityMatch(meta, {
-        pid: 4242,
-        cmd: 'notepad.exe',
-        startedAtMs: meta.startedAtMs
-      })
-    ).toThrow(/wrangler|identity|종료 거부|토큰 부족|executable/)
+    expect(parsed.bootNonce).toBe('abcdabcdabcdabcd')
   })
 })
 

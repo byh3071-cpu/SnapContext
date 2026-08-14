@@ -1,6 +1,7 @@
 /**
  * dogfood:verify — golden path + failure probes 통합 (R2: 토큰 로그 제거).
  */
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,17 +17,42 @@ import { LOCAL_UPLOAD_ENDPOINT } from '../../../scripts/dogfood/lib.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const LOG_DIR = resolve(__dirname, 'logs')
+const ROOT = resolve(__dirname, '../../..')
+
+/**
+ * @returns {{ head: string, dirty: boolean }}
+ */
+function readGitSnapshot() {
+  try {
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: ROOT,
+      encoding: 'utf8'
+    }).trim()
+    const status = execFileSync('git', ['status', '--porcelain'], {
+      cwd: ROOT,
+      encoding: 'utf8'
+    })
+    return { head, dirty: status.trim().length > 0 }
+  } catch (err) {
+    return {
+      head: `unknown:${err instanceof Error ? err.message : String(err)}`,
+      dirty: true
+    }
+  }
+}
 
 async function main() {
   console.log(`[verify] 시작 — endpoint=${LOCAL_UPLOAD_ENDPOINT}`)
+  const git = readGitSnapshot()
+  console.log(`[verify] git HEAD=${git.head} dirty=${git.dirty}`)
   const golden = await runGoldenPath()
-  // B1: 로그용 객체에서 userToken 분리
   const { userToken, ...goldenPublic } = golden
 
   if (!golden.ok) {
     console.error('[verify] golden path 실패 — failure probes 생략')
     writeSummary({
       ok: false,
+      git,
       golden: goldenPublic,
       probes: null,
       reason: 'golden-path-failed'
@@ -61,6 +87,7 @@ async function main() {
     console.error('[verify] 요약 실패:', err instanceof Error ? err.message : err)
     writeSummary({
       ok: false,
+      git,
       golden: goldenPublic,
       probes: { ok: probes.ok, results: probes.results },
       productionRequestCount,
@@ -75,6 +102,7 @@ async function main() {
   )
   writeSummary({
     ok: summary.ok,
+    git,
     summary,
     golden: goldenPublic,
     probes: { ok: probes.ok, results: probes.results }

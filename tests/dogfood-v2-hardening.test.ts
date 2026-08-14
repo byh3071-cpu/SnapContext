@@ -1,27 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-interface CommandIdentity {
-  wranglerEntry: string
-  hasLocalFlag: boolean
-  envFile: string
-  nodeExecutable: string
-  subcommand: string
-  ip: string
-  port: string
-  cwd: string
-}
-
 interface Lib {
-  normalizeCommandIdentity: (cmd: string, opts?: { cwd?: string }) => CommandIdentity
-  assertProcessIdentityMatch: (
-    expected: {
-      pid: number
-      startedAtMs: number
-      cmd: string
-      identity?: CommandIdentity
-    },
-    live: { pid: number; startedAtMs?: number; cmd?: string } | null
-  ) => void
+  normalizeCommandIdentity: (
+    cmd: string,
+    opts?: { cwd?: string }
+  ) => {
+    wranglerEntry: string
+    hasLocalFlag: boolean
+    envFile: string
+    nodeExecutable: string
+    subcommand: string
+    ip: string
+    port: string
+    cwd: string
+  }
   auditedFetch: (
     input: string,
     init?: RequestInit,
@@ -43,43 +35,7 @@ async function loadLib(): Promise<Lib> {
   return (await import(specifier)) as Lib
 }
 
-describe('V2 B1 process ownership fail-closed', () => {
-  it('같은 PID + --label=wrangler 스푸핑 명령을 거부한다', async () => {
-    const { assertProcessIdentityMatch, normalizeCommandIdentity } = await loadLib()
-    const expected = {
-      pid: 4242,
-      startedAtMs: 1_700_000_000_000,
-      cmd: GOOD_CMD,
-      identity: normalizeCommandIdentity(GOOD_CMD, {
-        cwd: 'C:/repo/worker/.dogfood-runtime'
-      })
-    }
-    expect(() =>
-      assertProcessIdentityMatch(expected, {
-        pid: 4242,
-        startedAtMs: expected.startedAtMs,
-        cmd: 'node unrelated.js --label=wrangler'
-      })
-    ).toThrow(/identity|wrangler 진입|종료 거부/)
-  })
-
-  it('live 시작 시각 누락 시 종료를 거부한다', async () => {
-    const { assertProcessIdentityMatch, normalizeCommandIdentity } = await loadLib()
-    expect(() =>
-      assertProcessIdentityMatch(
-        {
-          pid: 1,
-          startedAtMs: 1000,
-          cmd: GOOD_CMD,
-          identity: normalizeCommandIdentity(GOOD_CMD, {
-            cwd: 'C:/repo/worker/.dogfood-runtime'
-          })
-        },
-        { pid: 1, cmd: GOOD_CMD }
-      )
-    ).toThrow(/시작 시각/)
-  })
-
+describe('V2 B1 normalize identity (진단용)', () => {
   it('정규화 identity 는 wrangler.js·--local·env-file 을 요구한다', async () => {
     const { normalizeCommandIdentity, DOGFOOD_VARS_FILENAME } = await loadLib()
     const id = normalizeCommandIdentity(GOOD_CMD, {
