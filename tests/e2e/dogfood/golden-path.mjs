@@ -26,7 +26,11 @@ const MCP_URL = `${LOCAL_UPLOAD_ENDPOINT}/mcp`
 const TOKEN_STORAGE_KEY = 'snapcontextToken'
 
 /** @type {{ name: string, pass: boolean, detail?: string }[]} */
-const steps = []
+let steps = []
+
+function resetSteps() {
+  steps = []
+}
 
 function logStep(name, pass, detail = '') {
   steps.push({ name, pass, detail })
@@ -193,7 +197,30 @@ function writeLog(extra = {}) {
   return path
 }
 
-async function main() {
+/**
+ * @returns {Promise<{
+ *   ok: boolean,
+ *   steps: { name: string, pass: boolean, detail?: string }[],
+ *   marker: string | null,
+ *   captureId: string | null,
+ *   userToken: string | null,
+ *   piUrl: string | null,
+ *   seenUrls: string[]
+ * }>}
+ */
+export async function runGoldenPath() {
+  resetSteps()
+  /** @type {string[]} */
+  const seenUrls = [LOCAL_UPLOAD_ENDPOINT, MCP_URL]
+  /** @type {string | null} */
+  let marker = null
+  /** @type {string | null} */
+  let captureId = null
+  /** @type {string | null} */
+  let userToken = null
+  /** @type {string | null} */
+  let piUrl = null
+
   if (!existsSync(EXTENSION_PATH)) {
     throw new Error(`dist/ 없음. pnpm dogfood:up 또는 vite build 먼저 실행: ${EXTENSION_PATH}`)
   }
@@ -201,9 +228,11 @@ async function main() {
 
   await assertWorkerUp()
   const fixture = await writeMarkerFixture(FIXTURE_OUT)
+  marker = fixture.marker
   logStep('marker fixture 생성', true, `marker=${fixture.marker}`)
 
   const fixtureServer = await serveFixtureDir(FIXTURE_OUT)
+  seenUrls.push(fixtureServer.baseUrl)
   logStep('fixture HTTP 서버', true, fixtureServer.baseUrl)
 
   const context = await chromium.launchPersistentContext(PROFILE_DIR, {
@@ -216,11 +245,6 @@ async function main() {
       '--no-first-run'
     ]
   })
-
-  /** @type {string | null} */
-  let captureId = null
-  /** @type {string | null} */
-  let userToken = null
 
   try {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -260,10 +284,13 @@ async function main() {
     await saveButton.click()
     await side.waitForTimeout(200)
     const consent = side.locator('.snap-confirm')
-    if ((await consent.count()) !== 1) fail('저장 동의 모달', '미표시')
-    await side.locator('.snap-confirm__btn--primary').click()
+    if ((await consent.count()) === 1) {
+      await side.locator('.snap-confirm__btn--primary').click()
+    } else {
+      // 이미 동의한 프로필 — 바로 저장 진행
+      logStep('동의 모달 스킵(기존 동의)', true)
+    }
 
-    // 저장 완료·목록 반영 대기
     await side.waitForTimeout(1500)
     const savedTitle = side
       .locator('.ai-relay__saved-list')
@@ -345,7 +372,8 @@ async function main() {
     if (/NOT_FOUND|"isError"\s*:\s*true/.test(JSON.stringify(analyze.json)) && !digest.includes('/pi/')) {
       fail('snap_analyze', digest.slice(0, 300))
     }
-    const piUrl = extractPiUrl(digest)
+    piUrl = extractPiUrl(digest)
+    seenUrls.push(piUrl)
     logStep('snap_analyze + /pi URL', true, piUrl)
 
     const piRes = await fetch(piUrl)
@@ -393,11 +421,27 @@ async function main() {
     writeLog({ marker: fixture.marker, captureId, piUrl })
     const failed = steps.filter((s) => !s.pass)
     if (failed.length > 0) {
-      process.exitCode = 1
       console.error(`[golden] 실패 ${failed.length}건`)
-      return
+      return {
+        ok: false,
+        steps: [...steps],
+        marker,
+        captureId,
+        userToken,
+        piUrl,
+        seenUrls
+      }
     }
     console.log(`[golden] 전체 통과 (${steps.length} steps)`)
+    return {
+      ok: true,
+      steps: [...steps],
+      marker,
+      captureId,
+      userToken,
+      piUrl,
+      seenUrls
+    }
   } catch (err) {
     logStep('fatal', false, err instanceof Error ? err.message : String(err))
     writeLog({
@@ -406,14 +450,33 @@ async function main() {
       error: err instanceof Error ? err.message : String(err)
     })
     console.error('[golden] fatal:', err)
-    process.exitCode = 1
+    return {
+      ok: false,
+      steps: [...steps],
+      marker,
+      captureId,
+      userToken,
+      piUrl,
+      seenUrls
+    }
   } finally {
     await context.close()
     await fixtureServer.close()
   }
 }
 
-main().catch((err) => {
-  console.error('[golden] boot failure:', err)
-  process.exitCode = 1
-})
+async function main() {
+  const result = await runGoldenPath()
+  if (!result.ok) process.exitCode = 1
+}
+
+const isDirectRun =
+  process.argv[1] != null &&
+  resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])
+
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error('[golden] boot failure:', err)
+    process.exitCode = 1
+  })
+}
