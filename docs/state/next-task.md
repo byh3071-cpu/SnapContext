@@ -29,7 +29,18 @@ TASK: 0.4.2 원클릭 local dogfood harness 구축 및 Codex 10분 smoke
   human_gate_after: 분리된 HTTPS staging 생성 및 Claude Code·Cursor·Codex 실클라이언트 smoke
 ```
 
-## 2026-08-15 — SnapContext 0.4.2 T4 착수
+## 2026-08-15 — dogfood harness 완료 (PR #24 머지)
+
+```text
+TASK: Codex 일상 10분 dogfood smoke 1회 (사람 실행)
+  status: READY
+  priority: P0
+  절차: docs/dogfood.md — dogfood:up -> 로컬 /token 발급 -> register-mcp.ps1 -Local -> Codex 재시작 -> marker 판독 -> 삭제 -> NOT_FOUND
+  완료 근거: harness PR #24 머지(6e714ed), 적대검증 V7 blocker 0, verify 18/18(HEAD=057f699·dirty=false·production 0)
+  이후: HTTPS staging 승인(사람) -> 3클라이언트 릴리즈 smoke -> 0.4.2 배포·스토어·tag
+```
+
+## 2026-08-15 — SnapContext 0.4.2 T4 착수 (완료됨 — 위 항목으로 대체)
 
 ```text
 TASK: 0.4.2 로컬 MCP 등록과 Codex 일상 dogfood 절차 문서화

@@ -2,14 +2,9 @@
 
 ## Active
 
-- [ ] **P0 — SnapContext 0.4.2 원클릭 로컬 dogfood 검증 환경**
-  - 상태: **IN_PROGRESS** — T4 로컬 MCP 등록과 일상 검증 절차를 문서화한다.
-  - 목적: 구현된 사람 직접 전달과 MCP private 저장 흐름을 production 데이터 없이 10분 안에 반복 검증한다.
-  - 한 명령으로 local Worker, local D1 migration, localhost endpoint 확장 build, 전용 Chrome profile과 pixel-only marker fixture를 준비한다.
-  - golden path: 임의 marker 캡처 → 고정 → PNG 직접 전달 → `/captures` 저장 → `snap_history` → `snap_analyze` → marker 판독 → 즉시 삭제 → `NOT_FOUND` 확인.
-  - failure probes: 동의 취소 시 요청 0회, Worker 중단 시 명시적 실패, invalid token 재시도 1회 제한, 삭제 후 재접근 차단.
-  - 일상 검증은 Codex 1개 클라이언트, 릴리즈 게이트는 Claude Code·Cursor·Codex 전체로 구분한다.
-  - DoD: production binding·URL을 사용하지 않고 결과 로그를 남기며 기존 test·tsc·build·E2E가 모두 통과한다.
+- [ ] **P0 — Codex 일상 10분 dogfood smoke 1회 실행 (사람)**
+  - `docs/dogfood.md` 절차대로: `pnpm dogfood:up` → 로컬 `/token` 발급 → `register-mcp.ps1 -Local` → Codex 재시작 → marker 판독 → 즉시 삭제 → `NOT_FOUND` 확인.
+  - 통과하면 HTTPS staging 구성(사람 승인) → 3클라이언트 릴리즈 smoke로 진행.
 
 - [ ] **P1 — 0.4.2 수동 검증·릴리즈 문서와 스크립트 정합화**
   - README에 사람 직접 전달/MCP 저장의 현재 플로우와 local/staging 검증 절차를 추가한다.
@@ -36,3 +31,8 @@
   - 예상 소요: 내부 스모크 약 2일, 사용자 테스트 포함 3~5일.
 
 ## Done
+
+- [x] **P0 — SnapContext 0.4.2 원클릭 로컬 dogfood 검증 환경** (2026-08-15, PR #24 머지)
+  - `pnpm dogfood:up`(local Worker·D1·localhost 확장 build·전용 profile, supervisor handle-only 종료) + `pnpm dogfood:verify`(golden path 14 + failure probe 4 = 18/18, production 요청 0, 로그에 git HEAD·dirty 기록).
+  - `register-mcp.ps1 -Local` + `docs/dogfood.md`(일상 Codex 10분 / 릴리즈 3클라이언트 구분).
+  - 멀티벤더 적대 검증 7라운드(V1~V7)로 blocker 5건 발굴·수정 후 blocker 0 판정. 세션 로그: `docs/log/2026-08-15-dogfood-harness.md`.
