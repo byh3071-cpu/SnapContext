@@ -29,15 +29,16 @@ TASK: 0.4.2 원클릭 local dogfood harness 구축 및 Codex 10분 smoke
   human_gate_after: 분리된 HTTPS staging 생성 및 Claude Code·Cursor·Codex 실클라이언트 smoke
 ```
 
-## 2026-08-15 — dogfood harness 완료 (PR #24 머지)
+## 2026-08-15 — dogfood harness 완료 (PR #24 머지) + Codex smoke 통과
 
 ```text
-TASK: Codex 일상 10분 dogfood smoke 1회 (사람 실행)
-  status: READY
+TASK: HTTPS staging 구성 (사람 승인 게이트)
+  status: BLOCKED_ON_HUMAN
   priority: P0
-  절차: docs/dogfood.md — dogfood:up -> 로컬 /token 발급 -> register-mcp.ps1 -Local -> Codex 재시작 -> marker 판독 -> 삭제 -> NOT_FOUND
-  완료 근거: harness PR #24 머지(6e714ed), 적대검증 V7 blocker 0, verify 18/18(HEAD=057f699·dirty=false·production 0)
-  이후: HTTPS staging 승인(사람) -> 3클라이언트 릴리즈 smoke -> 0.4.2 배포·스토어·tag
+  내용: production 과 분리된 Worker/R2/D1/secret 구성 -> Claude Code·Cursor·Codex 3클라이언트 릴리즈 smoke -> 0.4.2 배포·스토어·tag
+  완료 근거(선행): harness PR #24 머지(6e714ed), 적대검증 V7 blocker 0, verify 18/18(HEAD=057f699·dirty=false·production 0),
+    Codex 실클라이언트 smoke 통과(2026-08-15: marker 959495 픽셀 판독 일치·삭제 후 NOT_FOUND·owner 격리 실측 — docs/log/2026-08-15-dogfood-harness.md)
+  참고: dogfood.md 에 marker 인코딩 스킴 문단 추가 필요(P1)
 ```
 
 ## 2026-08-15 — SnapContext 0.4.2 T4 착수 (완료됨 — 위 항목으로 대체)

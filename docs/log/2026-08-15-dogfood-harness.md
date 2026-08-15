@@ -24,9 +24,16 @@ tags: [v0.4.2, dogfood, harness, orca, multi-vendor]
 - 검증자의 "실행했다" 주장은 워크트리 git 물증·로그의 HEAD 기록으로만 신뢰(V4가 R4의 실행 주장을 반증).
 - orca 함정 3건 FRAGILITY.md에 기록: `no_active_sender_terminal`(컨덕터 sender 터미널 필요)·codex inject "submit: verified" 거짓 양성(맨 엔터 1회로 해소)·codex 터미널 2번째 dispatch의 binding 잔류(worker_done 거부 → raw send + 파일 폴백).
 
+## Codex 10분 smoke 실측 (2026-08-15, 머지 직후 지휘자 실행)
+
+- 실제 Codex CLI(`codex exec`)를 별도 등록 `snapcontext-local`(기존 등록 불침범, 종료 후 제거)로 연결.
+- 결과: `snap_history` 조회 → `snap_analyze` → **서명 이미지 실제 fetch → 픽셀 판독 marker `959495` 정확 일치** → DELETE 204 → `snap_analyze` 재호출 `isError=true`·정확히 `NOT_FOUND`.
+- 부수 실증: 토큰을 새로 발급하면 이전 토큰의 캡처가 `snap_history`에 안 보임 — **owner 격리 실측 확인**.
+- 발견: 픽셀 marker는 인코딩 스킴(8×8 격자·24bit·자리당 4bit)을 프롬프트에 설명해야 판독 가능 — 스킴 없인 임의 해석. docs/dogfood.md 절차에 스킴 문단 추가 필요(P1에 흡수).
+- 정리: supervisor 정상 종료(STOP_COMPLETE)·PID/stop 파일·8787 listener 잔존 0·codex 등록 제거.
+
 ## 사람 게이트 (남은 것)
 
-- Codex 일상 10분 smoke 1회(docs/dogfood.md 절차).
 - HTTPS staging 구성 승인 → 3클라이언트 릴리즈 smoke → 0.4.2 배포·스토어 제출·tag.
 
 ## 산출물 포인터

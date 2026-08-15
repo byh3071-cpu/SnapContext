@@ -2,9 +2,9 @@
 
 ## Active
 
-- [ ] **P0 — Codex 일상 10분 dogfood smoke 1회 실행 (사람)**
-  - `docs/dogfood.md` 절차대로: `pnpm dogfood:up` → 로컬 `/token` 발급 → `register-mcp.ps1 -Local` → Codex 재시작 → marker 판독 → 즉시 삭제 → `NOT_FOUND` 확인.
-  - 통과하면 HTTPS staging 구성(사람 승인) → 3클라이언트 릴리즈 smoke로 진행.
+- [ ] **P0 — HTTPS staging 구성 승인 (사람 게이트)**
+  - production과 분리된 Worker/R2/D1/secret 구성 — 생성·변경은 사람 승인 후.
+  - 이후 Claude Code·Cursor·Codex 3클라이언트 릴리즈 smoke → 0.4.2 배포·스토어·tag.
 
 - [ ] **P1 — 0.4.2 수동 검증·릴리즈 문서와 스크립트 정합화**
   - README에 사람 직접 전달/MCP 저장의 현재 플로우와 local/staging 검증 절차를 추가한다.
@@ -31,6 +31,11 @@
   - 예상 소요: 내부 스모크 약 2일, 사용자 테스트 포함 3~5일.
 
 ## Done
+
+- [x] **P0 — Codex 일상 10분 dogfood smoke** (2026-08-15, 지휘자 실측)
+  - 실제 Codex CLI(`codex exec`)가 로컬 MCP(`snapcontext-local`)로 `snap_history`→`snap_analyze`→서명 이미지 fetch→픽셀 판독: marker `959495` 정확 일치.
+  - 삭제 후 `snap_analyze` 재호출 = `isError=true`·정확히 `NOT_FOUND` (ADR-016). 부수 실증: 토큰 교체 시 이전 캡처 비노출(owner 격리).
+  - 발견: marker 판독엔 인코딩 스킴 설명이 프롬프트에 필요(스킴은 공개 정보, 값만 비밀) — docs/dogfood.md 절차 보강 필요(P1에 흡수).
 
 - [x] **P0 — SnapContext 0.4.2 원클릭 로컬 dogfood 검증 환경** (2026-08-15, PR #24 머지)
   - `pnpm dogfood:up`(local Worker·D1·localhost 확장 build·전용 profile, supervisor handle-only 종료) + `pnpm dogfood:verify`(golden path 14 + failure probe 4 = 18/18, production 요청 0, 로그에 git HEAD·dirty 기록).
