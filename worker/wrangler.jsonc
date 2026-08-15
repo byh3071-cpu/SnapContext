@@ -16,5 +16,25 @@
       "database_id": "4fb3b111-5594-42fe-8bf4-256a356ce73e",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  // staging 환경 (docs/staging-plan.md, 2026-08-15 승인) — env 블록은 binding을 상속하지 않으므로
+  // R2·D1을 staging 리소스로 전부 재선언한다. secret 2종(TOKEN_SIGNING_SECRET·SNAPCONTEXT_BEARER_TOKEN)은
+  // `wrangler secret put --env staging`으로 별도 주입(사람 게이트).
+  "env": {
+    "staging": {
+      "name": "snapcontext-worker-staging",
+      "r2_buckets": [
+        { "binding": "BUCKET", "bucket_name": "snapcontext-uploads-staging" }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "snapcontext-captures-staging",
+          // staging DB (2026-08-15 생성, APAC)
+          "database_id": "d3374f0b-44df-43da-8c98-9ee218bda898",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
 }
