@@ -39,7 +39,8 @@ production에 만든 데이터 0 (P9는 읽기 전용 401 확인 1회).
 - **300초 만료 + 재호출 복구 실증** — 만료 URL 403 → Codex가 tool 재호출로 새 URL 받아 재판독 성공.
 - **query log 실측** — tail에 `sig=` 쿼리스트링 노출되나 capture id는 Cloudflare가 REDACTED 마스킹 → 로그만으로 URL 재구성 불가 + 300초 만료. 위험도 낮음(사람 최종 판정 대기).
 
-## 남은 릴리즈 게이트 (사람 참여)
+## 릴리즈 게이트 완주 (8/16 새벽)
 
-- **Cursor smoke만 잔여** — mcp.json에 staging 임시 등록 완료, fixture(25430de5) 준비됨. 요한이 Cursor에서 판독 문구 실행.
-- 통과 시: production 배포·스토어 재심사 #1·PRIVACY 공개·tag `v0.4.2` (전부 사람 게이트). 이후 staging 등록 3개(codex·claude·cursor) 제거 + staging secret 회전.
+- **Cursor(cursor-agent CLI)도 PASS** — 3/3 클라이언트 전 절차 통과. 발견: cursor-agent는 부모 셸을 상속해 Git Bash 부모면 훅이 bash로 실행돼 깨짐 → PowerShell 부모로 실행하면 정상(훅 무결).
+- staging MCP 등록 3개 제거·러너 state(토큰) 삭제 완료.
+- **0.4.2 잔여 = 릴리즈 실행뿐(전부 사람 게이트)**: production 배포 → 재심사 #1 → PRIVACY 공개 → tag `v0.4.2`. 선택: staging secret 회전.

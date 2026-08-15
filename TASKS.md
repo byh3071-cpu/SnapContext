@@ -2,10 +2,10 @@
 
 ## Active
 
-- [ ] **P0 — 0.4.2 릴리즈 게이트 잔여: Cursor smoke 1건 (사람)**
-  - Codex·Claude Code는 staging 전 절차 PASS(블라인드 marker 판독·삭제 NOT_FOUND·300s 만료 후 재호출 복구) — tests/e2e/dogfood/logs/2026-08-15-release-smoke-staging.md.
-  - query log 실측 완료: sig= 노출·capture id는 CF가 REDACTED 마스킹(재구성 불가) — 위험도 낮음, 사람 최종 판정만.
-  - Cursor: mcp.json staging 임시 등록·fixture(25430de5) 준비됨 → 요한이 판독 문구 실행 → PASS 시 릴리즈(배포·재심사#1·PRIVACY·tag, 사람 게이트) → staging 등록 3개 제거·secret 회전.
+- [ ] **P0 — 0.4.2 릴리즈 실행 (전부 사람 게이트)**
+  - **릴리즈 게이트 3클라이언트 전 절차 PASS 완료** — Codex·Claude Code·Cursor 모두 블라인드 marker 판독 일치·삭제 NOT_FOUND·(Codex) 300s 만료 후 재호출 복구. query log 실측 완료(sig= 노출되나 capture id CF REDACTED → 재구성 불가, 위험 낮음). 상세: tests/e2e/dogfood/logs/2026-08-15-release-smoke-staging.md(로컬).
+  - 남은 것: production 배포(`wrangler deploy`) → 스토어 재심사 #1 제출 → PRIVACY 공개 → tag `v0.4.2`.
+  - 선택(권장): staging TOKEN_SIGNING_SECRET 회전(smoke 토큰 일괄 무효화).
 
 ## Someday
 
