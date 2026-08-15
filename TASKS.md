@@ -2,11 +2,10 @@
 
 ## Active
 
-- [ ] **P0 — 0.4.2 릴리즈 게이트 잔여: 3클라이언트 실클라이언트 smoke + query log 실측**
-  - staging(https://snapcontext-worker-staging.byh3071-26a.workers.dev) 대상 Claude Code·Cursor·Codex marker 판독 + 403 후 tool 재호출 복구 관찰 (docs/dogfood.md 릴리즈 게이트 절차).
-  - Workers 대시보드/`wrangler tail`에서 서명 토큰 쿼리스트링 로그 잔존 여부 실측.
-  - 통과 시(전부 사람 게이트): production 배포 → 스토어 재심사 #1 → PRIVACY 공개 → tag `v0.4.2`.
-  - 완료 근거(선행): staging 구성·기술 스모크 9/9 (docs/log/2026-08-15-staging-setup.md) — 300초 만료·서명 변조 403·owner 격리·binding·production 격리는 API 실측 완료.
+- [ ] **P0 — 0.4.2 릴리즈 게이트 잔여: Cursor smoke 1건 (사람)**
+  - Codex·Claude Code는 staging 전 절차 PASS(블라인드 marker 판독·삭제 NOT_FOUND·300s 만료 후 재호출 복구) — tests/e2e/dogfood/logs/2026-08-15-release-smoke-staging.md.
+  - query log 실측 완료: sig= 노출·capture id는 CF가 REDACTED 마스킹(재구성 불가) — 위험도 낮음, 사람 최종 판정만.
+  - Cursor: mcp.json staging 임시 등록·fixture(25430de5) 준비됨 → 요한이 판독 문구 실행 → PASS 시 릴리즈(배포·재심사#1·PRIVACY·tag, 사람 게이트) → staging 등록 3개 제거·secret 회전.
 
 ## Someday
 

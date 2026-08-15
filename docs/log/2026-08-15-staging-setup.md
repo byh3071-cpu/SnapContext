@@ -33,8 +33,13 @@ wrangler.jsonc `env.staging` 블록(binding 미상속 → 전부 재선언). dep
 
 production에 만든 데이터 0 (P9는 읽기 전용 401 확인 1회).
 
+## 릴리즈 smoke 실측 (같은 날 밤, 지휘자 실행 — 상세: tests/e2e/dogfood/logs/2026-08-15-release-smoke-staging.md)
+
+- **Codex·Claude Code 전 절차 PASS** — 블라인드 marker 픽셀 판독 일치(204667), 올바른 id 자가 발견, 삭제 후 NOT_FOUND.
+- **300초 만료 + 재호출 복구 실증** — 만료 URL 403 → Codex가 tool 재호출로 새 URL 받아 재판독 성공.
+- **query log 실측** — tail에 `sig=` 쿼리스트링 노출되나 capture id는 Cloudflare가 REDACTED 마스킹 → 로그만으로 URL 재구성 불가 + 300초 만료. 위험도 낮음(사람 최종 판정 대기).
+
 ## 남은 릴리즈 게이트 (사람 참여)
 
-- 3클라이언트(Claude Code·Cursor·Codex) 실클라이언트 smoke — staging URL 대상 marker 판독 + 403 후 tool 재호출 복구 관찰.
-- query log 노출 실측 — Workers 대시보드/`wrangler tail`에서 서명 토큰 쿼리스트링 잔존 여부.
-- 통과 시: production 배포·스토어 재심사 #1·PRIVACY 공개·tag `v0.4.2` (전부 사람 게이트).
+- **Cursor smoke만 잔여** — mcp.json에 staging 임시 등록 완료, fixture(25430de5) 준비됨. 요한이 Cursor에서 판독 문구 실행.
+- 통과 시: production 배포·스토어 재심사 #1·PRIVACY 공개·tag `v0.4.2` (전부 사람 게이트). 이후 staging 등록 3개(codex·claude·cursor) 제거 + staging secret 회전.
