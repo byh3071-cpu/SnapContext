@@ -51,6 +51,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/register-mcp.ps1 -Lo
 
 판독값이 틀리거나, 도구 호출 없이 DOM 텍스트·파일명·사용자 힌트에서 marker를 얻었다면 실패다. `snap_analyze` 응답의 이미지 URL이 localhost가 아니어도 즉시 실패로 기록한다.
 
+**인코딩 스킴 안내 (2026-08-15 실측 교훈)**: AI 클라이언트는 스킴 설명 없이는 격자를 임의 해석하므로, 판독을 요청할 때 아래 스킴을 프롬프트에 그대로 포함한다. 스킴은 공개 정보이고 비밀은 marker 값뿐이라 이 안내가 검증을 훼손하지 않는다 (SoT: `tests/e2e/dogfood/fixtures/marker.mjs`).
+
+> 이미지 속 흑백 격자는 8×8 셀이다. 바깥 테두리 한 줄은 전부 검정(위치 기준선)이고, 데이터는 내부 위쪽 4행×6열(행 우선)에 있다. 검정 셀=1, 흰 셀=0으로 24bit를 읽고, 4bit씩(MSB부터) 끊어 십진 숫자 6자리로 변환하면 marker다.
+
 ### 5. 즉시 삭제와 NOT_FOUND 확인
 
 1. 확장의 `서버에 저장된 캡처` 목록에서 방금 확인한 항목의 `즉시 삭제`를 실행한다.

@@ -1,4 +1,13 @@
-# Phase 4 E2E 스모크 — 배포본 대상 (사람 실행용). 결과는 화면 + worker\e2e-results.txt
+﻿# Phase 4 E2E 스모크 — 배포본 대상 (사람 실행용). 결과는 화면 + worker\e2e-results.txt
+# ⚠ production 가드 (0.4.2): 이 스크립트는 legacy 익명 /upload로 production Worker에 실데이터를 만든다.
+#   0.4.2 검증에는 pnpm dogfood:verify(로컬 격리)를 사용한다. production 실행은 사람이 의도를
+#   명시할 때만 허용한다: $env:SNAPCONTEXT_ALLOW_PROD_SMOKE = '1' 설정 후 실행.
+if ($env:SNAPCONTEXT_ALLOW_PROD_SMOKE -ne '1') {
+  Write-Host "차단: production 스모크는 기본 비활성입니다." -ForegroundColor Red
+  Write-Host "  - 0.4.2 로컬 검증: pnpm dogfood:verify (docs/dogfood.md)"
+  Write-Host "  - production 실행이 정말 필요하면: `$env:SNAPCONTEXT_ALLOW_PROD_SMOKE = '1' 후 재실행"
+  exit 1
+}
 $ErrorActionPreference = "Continue"
 Set-Location "C:\Users\Public\dev\products\snapcontext\worker"
 $U = "https://snapcontext-worker.byh3071-26a.workers.dev"

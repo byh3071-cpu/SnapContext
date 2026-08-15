@@ -1,4 +1,4 @@
-# SnapContext MCP를 Claude Code와 Codex에 등록한다.
+﻿# SnapContext MCP를 Claude Code와 Codex에 등록한다.
 # 토큰 원문을 명령 인자나 설정 파일에 넣지 않고 환경 변수 이름만 등록한다.
 param(
   [switch]$Admin,
@@ -11,6 +11,11 @@ $url = if ($Local) {
 }
 else {
   'https://snapcontext-worker.byh3071-26a.workers.dev/mcp'
+}
+
+Write-Host "등록 대상 URL: $url"
+if (-not $Local) {
+  Write-Host '주의: 기본값은 production Worker입니다. 로컬 dogfood 검증에는 -Local을 사용하세요 (docs/dogfood.md).' -ForegroundColor Yellow
 }
 
 if ($Admin) {
