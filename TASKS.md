@@ -6,11 +6,6 @@
   - production과 분리된 Worker/R2/D1/secret 구성 — 생성·변경은 사람 승인 후.
   - 이후 Claude Code·Cursor·Codex 3클라이언트 릴리즈 smoke → 0.4.2 배포·스토어·tag.
 
-- [ ] **P1 — 0.4.2 수동 검증·릴리즈 문서와 스크립트 정합화**
-  - README에 사람 직접 전달/MCP 저장의 현재 플로우와 local/staging 검증 절차를 추가한다.
-  - legacy 익명 `/upload`와 production URL을 사용하는 `scripts/e2e-smoke.ps1`는 private API 기반으로 교체하거나 production 실행을 명시적으로 차단한다.
-  - `scripts/register-mcp.ps1`의 production 기본값과 환경변수·에디터 재시작 조건을 분명히 안내한다.
-
 ## Waiting On
 
 - [ ] **0.4.2 HTTPS staging + 실제 AI 클라이언트 릴리즈 smoke**
@@ -31,6 +26,11 @@
   - 예상 소요: 내부 스모크 약 2일, 사용자 테스트 포함 3~5일.
 
 ## Done
+
+- [x] **P1 — 0.4.2 수동 검증·릴리즈 문서와 스크립트 정합화** (2026-08-15, c583d0d)
+  - README: v0.3.0 게시/0.4.2 개발 중 반영, AI 연동 2경로(직접 전달/MCP 저장)·검증 절차 표, pnpm 통일.
+  - `e2e-smoke.ps1`: production 실행 기본 차단(`SNAPCONTEXT_ALLOW_PROD_SMOKE='1'` 명시 필요, 실측 확인). `register-mcp.ps1`: 등록 URL 출력 + production 기본 경고.
+  - dogfood.md: marker 인코딩 스킴 안내 문단(8/15 smoke 교훈 흡수). 부수: PS 5.1 BOM 파서 함정 발견 → PAT-003 등재.
 
 - [x] **P0 — Codex 일상 10분 dogfood smoke** (2026-08-15, 지휘자 실측)
   - 실제 Codex CLI(`codex exec`)가 로컬 MCP(`snapcontext-local`)로 `snap_history`→`snap_analyze`→서명 이미지 fetch→픽셀 판독: marker `959495` 정확 일치.
