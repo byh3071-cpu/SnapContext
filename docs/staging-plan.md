@@ -6,7 +6,7 @@ tags: [staging, release, v0.4.2, cloudflare]
 
 # 0.4.2 HTTPS staging 구성 계획 (승인 대기)
 
-> 상태: **요한 승인 대기**. 이 문서 승인 전에는 어떤 Cloudflare 리소스도 만들지 않는다.
+> 상태: **구성 완료 (2026-08-15)** — 승인 후 1~5단계 전부 실행됨. 기술 스모크 9/9 PASS. 실행 기록: [docs/log/2026-08-15-staging-setup.md](./log/2026-08-15-staging-setup.md). 남은 것: 3클라이언트 실클라이언트 smoke + query log 실측.
 
 ## 왜 필요한가 (한 줄)
 

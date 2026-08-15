@@ -2,17 +2,11 @@
 
 ## Active
 
-- [ ] **P0 — HTTPS staging 구성 승인 (사람 게이트)**
-  - production과 분리된 Worker/R2/D1/secret 구성 — 생성·변경은 사람 승인 후.
-  - 이후 Claude Code·Cursor·Codex 3클라이언트 릴리즈 smoke → 0.4.2 배포·스토어·tag.
-
-## Waiting On
-
-- [ ] **0.4.2 HTTPS staging + 실제 AI 클라이언트 릴리즈 smoke**
-  - production과 분리된 Worker/R2/D1/secret 구성이 필요하며 생성·변경은 사람 승인 후 진행한다.
-  - Claude Code·Cursor·Codex가 서명 PNG의 pixel-only marker를 실제로 읽는지 확인한다.
-  - 300초 만료, 403 후 tool 재호출, owner 격리, query log 노출 여부와 실제 binding을 함께 확인한다.
-  - 이 검증 전에는 production 배포·스토어 제출·tag·merge를 진행하지 않는다.
+- [ ] **P0 — 0.4.2 릴리즈 게이트 잔여: 3클라이언트 실클라이언트 smoke + query log 실측**
+  - staging(https://snapcontext-worker-staging.byh3071-26a.workers.dev) 대상 Claude Code·Cursor·Codex marker 판독 + 403 후 tool 재호출 복구 관찰 (docs/dogfood.md 릴리즈 게이트 절차).
+  - Workers 대시보드/`wrangler tail`에서 서명 토큰 쿼리스트링 로그 잔존 여부 실측.
+  - 통과 시(전부 사람 게이트): production 배포 → 스토어 재심사 #1 → PRIVACY 공개 → tag `v0.4.2`.
+  - 완료 근거(선행): staging 구성·기술 스모크 9/9 (docs/log/2026-08-15-staging-setup.md) — 300초 만료·서명 변조 403·owner 격리·binding·production 격리는 API 실측 완료.
 
 ## Someday
 
