@@ -1,4 +1,5 @@
 import type {
+  Annotation,
   CaptureResultPayload,
   ContextPack,
   ExtensionMessage,
@@ -8,6 +9,8 @@ import { generateContextPack } from '../context-pack/generator'
 import * as history from '../storage/history'
 import { sendToBackground } from '../utils/messaging'
 import type { ContextPackPanelApi } from './components/ContextPackPanel'
+import { mountAnnotationOverlay } from './components/AnnotationOverlay'
+import { mountAnnotationToolbar, type AnnotationTool } from './components/AnnotationToolbar'
 import { mountCaptureToolbar } from './components/CaptureToolbar'
 import { mountContextPackPanel } from './components/ContextPackPanel'
 import { mountHistoryList } from './components/HistoryList'
@@ -81,6 +84,10 @@ function init(): void {
   let captureSnapshot: CaptureResultPayload | null = null
   let pins: PinItem[] = []
   let activePinId: number | null = null
+  // 주석(가리기·화살표·형광펜·자유선) — 세션-로컬 상태, 히스토리에는 저장하지 않는다
+  // (PRD-0.4.3 §B 비목표). 핀과 동일 지점(새 캡처·히스토리 복원)에서 초기화한다.
+  let annotations: Annotation[] = []
+  let activeAnnotationTool: AnnotationTool = 'none'
   let currentHistoryId: string | null = null
   let currentHistoryTimestamp = ''
   let historyPersistTimer: number | null = null
@@ -338,11 +345,53 @@ function init(): void {
     pinHandlers
   )
 
+  /* ---- 주석 도구(0.4.3 B2) — 편집 오버레이 + 툴바. Preview 스테이지 상단에 위치. ---- */
+  const annotationToolbarHost = document.createElement('div')
+  preview.cardEl.prepend(annotationToolbarHost)
+
+  const annotationOverlay = mountAnnotationOverlay(preview.pinContainer, preview.imageEl, {
+    getAnnotations: () => annotations,
+    getActiveTool: () => activeAnnotationTool,
+    onCommitRedact: (box) => {
+      annotations = [...annotations, { id: annotations.length + 1, kind: 'redact', ...box }]
+      annotationToolbar.sync()
+    },
+    onCommitArrow: (arrow) => {
+      annotations = [...annotations, { id: annotations.length + 1, kind: 'arrow', ...arrow }]
+      annotationToolbar.sync()
+    },
+    onCommitStroke: (kind, points) => {
+      annotations = [...annotations, { id: annotations.length + 1, kind, points }]
+      annotationToolbar.sync()
+    }
+  })
+
+  const annotationToolbar = mountAnnotationToolbar(annotationToolbarHost, {
+    getActiveTool: () => activeAnnotationTool,
+    onSelectTool: (tool) => {
+      activeAnnotationTool = tool
+      annotationOverlay.render()
+    },
+    onUndo: () => {
+      annotations = annotations.slice(0, -1)
+      annotationOverlay.render()
+    },
+    hasImage: () => preview.hasImage(),
+    hasAnnotations: () => annotations.length > 0
+  })
+
+  /** 새 캡처·히스토리 복원 시 주석 상태를 완전히 비운다(핀과 동일 지점에서 호출). */
+  function resetAnnotationsUi(): void {
+    annotations = []
+    annotationOverlay.render()
+    annotationToolbar.sync()
+  }
+
   const imageActions = mountImageActions(preview.exportHost, secShare, {
     hasCapture: () => capturedImage !== null,
     getImage: () => capturedImage,
     getPins: () => pins,
-    getAnnotations: () => [],
+    getAnnotations: () => annotations,
     getContext: () =>
       captureSnapshot
         ? {
@@ -445,6 +494,9 @@ function init(): void {
       activePinId = null
       refreshPins()
 
+      // 히스토리 항목엔 주석이 저장되지 않는다(PRD-0.4.3 §B 비목표) — 항상 빈 상태로 시작.
+      resetAnnotationsUi()
+
       // Sync panels.
       pinMemoHost.hidden = false
       secPack.hidden = false
@@ -480,6 +532,7 @@ function init(): void {
     pins = []
     activePinId = null
     refreshPins()
+    resetAnnotationsUi()
   }
 
   const applyCapturePayload = (payload: CaptureResultPayload): void => {
@@ -495,6 +548,8 @@ function init(): void {
     packRef.api?.resetPack()
     packRef.api?.sync()
     imageActions.sync()
+    annotationToolbar.sync()
+    annotationOverlay.render()
     pinMemoHost.hidden = false
     secPack.hidden = false
     try {

@@ -1,11 +1,18 @@
-import type { Annotation, ArrowAnnotation, PinItem, StrokeAnnotation } from '../types'
+import type {
+  Annotation,
+  ArrowAnnotation,
+  PinItem,
+  RedactBoxAnnotation,
+  StrokeAnnotation
+} from '../types'
 import { applyRedactBoxes } from './redaction'
 
 // 가리기 채움색 — 핀 글리프와 같은 잉크색(#15110F). ADR-021: 모자이크·블러 대신 상수 색.
-const REDACT_COLOR: [number, number, number] = [21, 17, 15]
-const ARROW_COLOR = '#E5302E'
-const FREEHAND_COLOR = '#E5302E'
-const HIGHLIGHT_COLOR = 'rgba(255, 235, 59, 0.4)'
+// export: 사이드패널 주석 오버레이(편집 중 미리보기)도 동일 색을 써야 WYSIWYG 계약이 성립한다.
+export const REDACT_COLOR: [number, number, number] = [21, 17, 15]
+export const ARROW_COLOR = '#E5302E'
+export const FREEHAND_COLOR = '#E5302E'
+export const HIGHLIGHT_COLOR = 'rgba(255, 235, 59, 0.4)'
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -16,12 +23,18 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   })
 }
 
-/** % 좌표(0~100) → 캔버스 px 좌표. */
-function toPx(value: number, size: number): number {
+/** % 좌표(0~100) → 캔버스 px 좌표. bake·오버레이 편집 미리보기 공용. */
+export function toPx(value: number, size: number): number {
   return (value / 100) * size
 }
 
-function drawArrow(
+/** 캔버스 너비 기준 기본 선 두께 — bake·오버레이가 동일 공식을 써야 시각이 일치한다. */
+export function computeBaseLineWidth(canvasWidth: number): number {
+  return Math.max(2, canvasWidth * 0.004)
+}
+
+/** 화살표 1건을 그린다 — bake(내보내기)와 사이드패널 오버레이(편집 중 미리보기) 공용 함수. */
+export function drawArrow(
   ctx: CanvasRenderingContext2D,
   arrow: ArrowAnnotation,
   width: number,
@@ -62,7 +75,8 @@ function drawArrow(
   ctx.restore()
 }
 
-function drawStroke(
+/** 형광펜·자유선 1건을 그린다 — bake·오버레이 공용 함수. */
+export function drawStroke(
   ctx: CanvasRenderingContext2D,
   stroke: StrokeAnnotation,
   width: number,
@@ -84,6 +98,67 @@ function drawStroke(
   }
   ctx.stroke()
   ctx.restore()
+}
+
+/**
+ * 가리기 박스 1건을 불투명 솔리드로 그린다 — 사이드패널 오버레이의 "편집 중 미리보기"
+ * 전용(WYSIWYG, ADR-021). 실제 내보내기 bake 는 픽셀 버퍼를 직접 치환하는
+ * applyRedactBoxes 를 쓴다(캔버스 합성 경로를 거치지 않아야 알파 등으로 픽셀이 새는 걸
+ * 원천 배제할 수 있다) — 여기 함수는 편집 화면에 "가려질 자리"를 사용자에게 그대로
+ * 보여주는 용도일 뿐, 파괴적 bake 경로가 아니다.
+ */
+export function drawRedactBox(
+  ctx: CanvasRenderingContext2D,
+  box: Pick<RedactBoxAnnotation, 'x' | 'y' | 'w' | 'h'>,
+  width: number,
+  height: number
+): void {
+  const [r, g, b] = REDACT_COLOR
+  ctx.save()
+  ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
+  ctx.fillRect(toPx(box.x, width), toPx(box.y, height), toPx(box.w, width), toPx(box.h, height))
+  ctx.restore()
+}
+
+/** 표현용 주석(화살표·형광펜·자유선) 1건을 그린다 — bake·오버레이 공용 dispatcher. */
+export function drawExpressiveAnnotation(
+  ctx: CanvasRenderingContext2D,
+  annotation: ArrowAnnotation | StrokeAnnotation,
+  width: number,
+  height: number,
+  baseLineWidth: number
+): void {
+  if (annotation.kind === 'arrow') {
+    drawArrow(ctx, annotation, width, height, baseLineWidth)
+  } else if (annotation.kind === 'highlight') {
+    drawStroke(ctx, annotation, width, height, HIGHLIGHT_COLOR, baseLineWidth * 3)
+  } else {
+    drawStroke(ctx, annotation, width, height, FREEHAND_COLOR, baseLineWidth)
+  }
+}
+
+/**
+ * 주석 목록을 캔버스에 그린다(비파괴 미리보기 전용 — 사이드패널 오버레이가 쓴다).
+ * 가리기를 먼저 그려야 그 위에 얹힌 화살표·형광펜 등이 가려지지 않는다
+ * (bake 쪽 순서와 동일 규칙, ADR-021).
+ */
+export function drawAnnotationsPreview(
+  ctx: CanvasRenderingContext2D,
+  annotations: Annotation[],
+  width: number,
+  height: number,
+  baseLineWidth: number
+): void {
+  for (const annotation of annotations) {
+    if (annotation.kind === 'redact') {
+      drawRedactBox(ctx, annotation, width, height)
+    }
+  }
+  for (const annotation of annotations) {
+    if (annotation.kind !== 'redact') {
+      drawExpressiveAnnotation(ctx, annotation, width, height, baseLineWidth)
+    }
+  }
 }
 
 export async function renderAnnotatedPngBlob(
@@ -120,21 +195,10 @@ export async function renderAnnotatedPngBlob(
   }
 
   // 2) 표현용 주석(화살표·형광펜·자유선) — 선 두께는 이미지 크기에 비례.
-  const baseLineWidth = Math.max(2, canvas.width * 0.004)
+  const baseLineWidth = computeBaseLineWidth(canvas.width)
   for (const annotation of annotations) {
-    if (annotation.kind === 'arrow') {
-      drawArrow(ctx, annotation, canvas.width, canvas.height, baseLineWidth)
-    } else if (annotation.kind === 'highlight') {
-      drawStroke(
-        ctx,
-        annotation,
-        canvas.width,
-        canvas.height,
-        HIGHLIGHT_COLOR,
-        baseLineWidth * 3
-      )
-    } else if (annotation.kind === 'freehand') {
-      drawStroke(ctx, annotation, canvas.width, canvas.height, FREEHAND_COLOR, baseLineWidth)
+    if (annotation.kind !== 'redact') {
+      drawExpressiveAnnotation(ctx, annotation, canvas.width, canvas.height, baseLineWidth)
     }
   }
 
