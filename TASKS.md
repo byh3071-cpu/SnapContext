@@ -2,10 +2,14 @@
 
 ## Active
 
-- [ ] **P0 — 0.4.2 릴리즈 실행 (전부 사람 게이트)**
+- [ ] **P0 — 0.4.2 릴리즈 실행 (전부 사람 게이트) — 스토어 제출 제외**
   - **릴리즈 게이트 3클라이언트 전 절차 PASS 완료** — Codex·Claude Code·Cursor 모두 블라인드 marker 판독 일치·삭제 NOT_FOUND·(Codex) 300s 만료 후 재호출 복구. query log 실측 완료(sig= 노출되나 capture id CF REDACTED → 재구성 불가, 위험 낮음). 상세: tests/e2e/dogfood/logs/2026-08-15-release-smoke-staging.md(로컬).
-  - 남은 것: production 배포(`wrangler deploy`) → 스토어 재심사 #1 제출 → PRIVACY 공개 → tag `v0.4.2`.
+  - 남은 것: production 배포(`wrangler deploy`) → PRIVACY 공개 → tag `v0.4.2`.
   - 선택(권장): staging TOKEN_SIGNING_SECRET 회전(smoke 토큰 일괄 무효화).
+
+- [ ] **P1 — 스토어 재심사 제출: 0.4.5 개발 완료 후 마지막에 1회 (요한 결정 2026-08-16)**
+  - 0.4.2~0.4.5를 제출 없이 개발 진행 → 0.4.5 완성본으로 재심사 #1 제출(중간 버전마다 심사 대기 반복 안 함).
+  - 0.4.3(프라이빗 전환 잔여)·0.4.4·0.4.5 스코프는 착수 시 정의.
 
 ## Someday
 
