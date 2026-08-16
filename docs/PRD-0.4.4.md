@@ -43,8 +43,8 @@ id만 알면 열리던 마지막 문 3개(`/s` 뷰어·무서명 `/i`·레거시
 ## 비목표
 
 - 확장(src/) 변경 일체 — 이미 레거시 참조 0
-- rate-limit 승급(→ 0.4.5) · 토큰 v2 exp+kid(→ 0.4.6, docs/research/token-threat-model.md)
-- 스토어 제출(0.4.5 후 일괄)
+- rate-limit 승급(→ 0.4.5) · 토큰 v2 exp+kid(→ 0.4.7 revoke 완성형과 함께, docs/research/token-threat-model.md)
+- 스토어 제출(0.4.6 랜딩 후 일괄 — 로드맵 2026-08-17 재편)
 
 ## 완료 기준 (DoD)
 
