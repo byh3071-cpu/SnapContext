@@ -85,7 +85,8 @@ function init(): void {
   let pins: PinItem[] = []
   let activePinId: number | null = null
   // 주석(가리기·화살표·형광펜·자유선) — 세션-로컬 상태, 히스토리에는 저장하지 않는다
-  // (PRD-0.4.3 §B 비목표). 핀과 동일 지점(새 캡처·히스토리 복원)에서 초기화한다.
+  // (PRD-0.4.3 비목표: "주석·가리기의 히스토리 저장·복원 — 세션-로컬(0.5+ 후보)").
+  // 핀과 동일 지점(새 캡처·히스토리 복원)에서 초기화한다.
   let annotations: Annotation[] = []
   let activeAnnotationTool: AnnotationTool = 'none'
   let currentHistoryId: string | null = null
@@ -108,7 +109,16 @@ function init(): void {
   panel.className = 'panel'
 
   const { masthead, settingsBtn } = buildMasthead()
-  mountShortcutsHelp(masthead, settingsBtn)
+  // ImageActions 는 아래에서 나중에 마운트되므로(초기화 순서상 masthead 가 먼저다)
+  // ref 로 늦은 바인딩한다 — packRef.api 와 동일한 관례.
+  const imageActionsRef: { refreshTokenStatus: (() => Promise<void>) | null } = {
+    refreshTokenStatus: null
+  }
+  mountShortcutsHelp(masthead, settingsBtn, {
+    onTokenRegenerated: () => {
+      void imageActionsRef.refreshTokenStatus?.()
+    }
+  })
 
   const main = document.createElement('main')
   main.className = 'scroll'
@@ -265,10 +275,12 @@ function init(): void {
     if (!currentHistoryId || !pack) return
     const historyId = currentHistoryId
     const pinsCount = pins.length
+    const hasAnnotationsNow = annotations.length > 0
     void lastSaveCaptureTask
       .then(() =>
         history.updateCaptureAnnotations(historyId, {
           pinsCount,
+          hasAnnotations: hasAnnotationsNow,
           contextPack: pack
         })
       )
@@ -297,7 +309,12 @@ function init(): void {
   }
 
   const pinHandlers = {
-    canPin: () => preview.hasImage(),
+    // 활성 주석 도구가 있으면(가리기 등) AnnotationOverlay 캔버스가 드래그를 가로채는데,
+    // 포인터업이 만드는 브라우저 기본 click 이벤트는 캔버스에서 pinContainer 로 그대로
+    // 버블링된다 — pointerdown 의 preventDefault 는 그 click 생성 자체를 못 막고, 취소나
+    // 다중 포인터 상황에서도 새어나간다. click 을 stopPropagation 으로 삼키는 대신
+    // 게이트에서 도구 상태를 직접 봐서 "드래그마다 핀이 유령처럼 추가"되는 걸 막는다.
+    canPin: () => preview.hasImage() && activeAnnotationTool === 'none',
     onAddPin: (x: number, y: number) => {
       const nextId = pins.length + 1
       pins = [...pins, { id: nextId, x, y, memo: '' }]
@@ -355,14 +372,23 @@ function init(): void {
     onCommitRedact: (box) => {
       annotations = [...annotations, { id: annotations.length + 1, kind: 'redact', ...box }]
       annotationToolbar.sync()
+      // 주석 자체는 히스토리에 저장하지 않지만(세션-로컬), "이 캡처에 주석이 있었다"
+      // boolean 신호는 남겨야 복원 시 조건부 고지가 가능하다 — 기존 핀 저장 debounce 를
+      // 그대로 재사용(persistHistoryPins 가 hasAnnotations 를 함께 기록한다).
+      persistHistoryPinsDebounced()
     },
     onCommitArrow: (arrow) => {
       annotations = [...annotations, { id: annotations.length + 1, kind: 'arrow', ...arrow }]
       annotationToolbar.sync()
+      persistHistoryPinsDebounced()
     },
     onCommitStroke: (kind, points) => {
       annotations = [...annotations, { id: annotations.length + 1, kind, points }]
       annotationToolbar.sync()
+      persistHistoryPinsDebounced()
+    },
+    onRejectAnnotation: (reason) => {
+      showToast(reason, 'error')
     }
   })
 
@@ -375,6 +401,7 @@ function init(): void {
     onUndo: () => {
       annotations = annotations.slice(0, -1)
       annotationOverlay.render()
+      persistHistoryPinsDebounced()
     },
     hasImage: () => preview.hasImage(),
     hasAnnotations: () => annotations.length > 0
@@ -406,6 +433,7 @@ function init(): void {
         : null,
     showToast
   })
+  imageActionsRef.refreshTokenStatus = imageActions.refreshTokenStatus
 
   packRef.api = mountContextPackPanel(secPack, {
     hasCapture: () => capturedImage !== null,
@@ -494,7 +522,8 @@ function init(): void {
       activePinId = null
       refreshPins()
 
-      // 히스토리 항목엔 주석이 저장되지 않는다(PRD-0.4.3 §B 비목표) — 항상 빈 상태로 시작.
+      // 히스토리 항목엔 주석이 저장되지 않는다(PRD-0.4.3 비목표: "주석·가리기의 히스토리
+      // 저장·복원 — 세션-로컬(0.5+ 후보)") — 항상 빈 상태로 시작.
       resetAnnotationsUi()
 
       // Sync panels.
@@ -506,6 +535,11 @@ function init(): void {
       }
       packRef.api?.sync()
 
+      // 이 캡처에 실제로 주석이 있었을 때만 고지한다 — 없던 캡처까지 매번 띄우면 과잉
+      // 알림이 된다(item.hasAnnotations 는 저장 시점 boolean 신호, pinsCount 와 동일 패턴).
+      if (item.hasAnnotations) {
+        showToast('이전에 적용한 가리기·주석은 복원되지 않습니다.', 'info')
+      }
       showToast('캡처를 불러왔습니다.', 'info')
     },
     showToast
@@ -521,9 +555,11 @@ function init(): void {
   secHistory.append(colophon)
 
   const maybeConfirmClearPins = async (): Promise<boolean> => {
-    if (pins.length === 0) return true
+    // 가리기만 그려둔 상태(핀 0개)에서 새 캡처를 시작하면 pins.length 만 보던 예전 조건은
+    // 무확인으로 주석을 통째로 날렸다 — 핀·주석 둘 다 없을 때만 확인 없이 통과시킨다.
+    if (pins.length === 0 && annotations.length === 0) return true
     return showConfirm(
-      '새 캡처를 시작하면 기존 핀이 삭제됩니다. 계속할까요?',
+      '새 캡처를 시작하면 기존 핀과 주석(가리기 등)이 삭제됩니다. 계속할까요?',
       app
     )
   }
@@ -576,6 +612,7 @@ function init(): void {
         captureType: payload.captureType,
         imageBase64: payload.imageData,
         pinsCount: 0,
+        hasAnnotations: annotations.length > 0,
         contextPack
       }).catch(() => {
         showToast('캡처 기록을 저장하지 못했습니다.', 'error')

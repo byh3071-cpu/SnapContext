@@ -19,6 +19,11 @@ export type AnnotationOverlayOpts = {
     kind: 'highlight' | 'freehand',
     points: Array<{ x: number; y: number }>
   ) => void
+  /**
+   * 임계 미달로 주석이 조용히 폐기될 때 통보한다(예: 가리기 드래그가 너무 작아 버려짐).
+   * 호출측(App)이 기존 토스트 관례로 사용자에게 알린다.
+   */
+  onRejectAnnotation: (reason: string) => void
 }
 
 /** 드래그 중(미확정) 도형 — % 좌표계. 확정 전에는 App 상태에 반영하지 않는다(undo 가능). */
@@ -27,8 +32,18 @@ type Draft =
   | { kind: 'arrow'; x1: number; y1: number; x2: number; y2: number }
   | { kind: 'highlight' | 'freehand'; points: Array<{ x: number; y: number }> }
 
-/** 드래그가 이 이하(% 단위)면 실수 클릭으로 보고 버린다. */
+/** 드래그가 이 이하(% 단위)면 실수 클릭으로 보고 버린다 — 표현 도구(화살표·스트로크) 전용. */
 const MIN_DRAG_PCT = 1
+/**
+ * 가리기(redact) 최소 크기 — 표시 px 절대값(가로·세로 각각 이 이상).
+ *
+ * 가리기는 % 임계값을 쓰면 안 된다 — 원본 캡처가 길수록(예: 1000×6000) 같은 % 가 나타내는
+ * 실제 표시 px 문턱이 커져서, 넓고 얇은 박스(텍스트 한 줄 가리기 등)가 % 문턱에 걸려
+ * 무통보로 사라진다(실측: 1000×6000 캡처에서 원본 60px 문턱). 화면에 실제로 보이는
+ * 크기(표시 px) 기준으로 판정해야 캡처 크기와 무관하게 일관된다. 파괴적 도구라 표현
+ * 도구(화살표·스트로크)와는 분리해서 판정한다.
+ */
+const MIN_REDACT_DISPLAY_PX = 4
 /** 자유선/형광펜 포인트 샘플링 최소 간격(표시 px) — 과도한 점 적재 방지. */
 const STROKE_SAMPLE_PX = 2
 
@@ -174,8 +189,14 @@ export function mountAnnotationOverlay(
       const y = Math.min(committed.y1, committed.y2)
       const w = Math.abs(committed.x2 - committed.x1)
       const h = Math.abs(committed.y2 - committed.y1)
-      if (w >= MIN_DRAG_PCT && h >= MIN_DRAG_PCT) {
+      // % 가 아니라 실제 표시 px 로 환산해 판정한다(MIN_REDACT_DISPLAY_PX 주석 참고).
+      const rect = imageEl.getBoundingClientRect()
+      const pxW = (w / 100) * rect.width
+      const pxH = (h / 100) * rect.height
+      if (pxW >= MIN_REDACT_DISPLAY_PX && pxH >= MIN_REDACT_DISPLAY_PX) {
         opts.onCommitRedact({ x, y, w, h })
+      } else {
+        opts.onRejectAnnotation('너무 작아 가리기가 적용되지 않았습니다.')
       }
     } else if (committed.kind === 'arrow') {
       const dist = Math.hypot(committed.x2 - committed.x1, committed.y2 - committed.y1)

@@ -49,6 +49,8 @@ const PRIVATE_CONSENT_KEY = 'snapcontext.privateUploadConsent'
 export interface ImageActionsApi {
   sync: () => void
   copyPng: () => Promise<void>
+  /** 저장된 토큰 표시(마스킹)를 다시 읽어 갱신한다 — 설정 화면 재발급 성공 후 호출용. */
+  refreshTokenStatus: () => Promise<void>
 }
 
 const MODE_OPTIONS: ReadonlyArray<{
@@ -482,5 +484,5 @@ export function mountImageActions(
   }
   sync()
 
-  return { sync, copyPng }
+  return { sync, copyPng, refreshTokenStatus }
 }

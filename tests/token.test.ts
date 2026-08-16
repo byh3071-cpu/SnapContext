@@ -13,6 +13,7 @@ import { stubChromeStorage } from './helpers/chrome-storage'
 
 const VALID_TOKEN = 'sc_AAAAAAAAAAAAAAAAAAAAAA.BBBBBBBBBBBBBBBBBBBBBB'
 const ISSUED_TOKEN = 'sc_CCCCCCCCCCCCCCCCCCCCCC.DDDDDDDDDDDDDDDDDDDDDD'
+const REGEN_TOKEN = 'sc_EEEEEEEEEEEEEEEEEEEEEE.FFFFFFFFFFFFFFFFFFFFFF'
 
 const tokenJson = (token: unknown) =>
   new Response(JSON.stringify({ token }), {
@@ -340,6 +341,60 @@ describe('regenerateUserToken', () => {
     expect(b).toBe(ISSUED_TOKEN)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(storage.store.get(TOKEN_STORAGE_KEY)).toBe(ISSUED_TOKEN)
+  })
+})
+
+// 0.4.3 critic 지적 — ensureUserToken 과 regenerateUserToken 의 in-flight 가드가
+// 서로 독립이라, 두 함수가 동시에 실행되면 나중에 끝난 쪽이 storage 를 덮어써 owner 가
+// 파편화될 수 있었다(같은 사용자가 서로 다른 owner 로 갈라짐). 두 함수가 서로의
+// in-flight 를 인지하도록 고친 뒤에도 fetch 횟수·최종 storage 값이 예측 가능해야 한다.
+describe('ensureUserToken × regenerateUserToken in-flight 교차 가드 (경합)', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_UPLOAD_ENDPOINT', 'https://w.example.dev')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('regenerate 진행 중 ensure 를 동시 호출해도 fetch 1회 · 같은 토큰 · storage 는 재발급 결과다', async () => {
+    const storage = stubChromeStorage({ [TOKEN_STORAGE_KEY]: VALID_TOKEN })
+    const fetchMock = vi.fn(async () => tokenJson(ISSUED_TOKEN))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // await 없이 동시 발사 — regenerate 가 먼저 시작해 regenerateInFlight 를 채운 뒤
+    // ensure 가 그걸 재사용해야 한다(각자 별도 발급을 하면 fetch 가 2회 나간다).
+    const regenerate = regenerateUserToken()
+    const ensure = ensureUserToken()
+    const [regenerated, ensured] = await Promise.all([regenerate, ensure])
+
+    expect(regenerated).toBe(ISSUED_TOKEN)
+    expect(ensured).toBe(ISSUED_TOKEN)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(storage.store.get(TOKEN_STORAGE_KEY)).toBe(ISSUED_TOKEN)
+  })
+
+  it('ensure 진행 중 regenerate 를 호출하면 ensure 결과를 흡수한 뒤 강제 재발급해 storage 는 재발급 토큰으로 귀결된다', async () => {
+    const storage = stubChromeStorage() // 저장된 토큰 없음 → ensure 가 발급 경로를 탄다
+    let call = 0
+    const fetchMock = vi.fn(async () => {
+      call += 1
+      return call === 1 ? tokenJson(ISSUED_TOKEN) : tokenJson(REGEN_TOKEN)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const ensure = ensureUserToken()
+    const regenerate = regenerateUserToken()
+    const [ensured, regenerated] = await Promise.all([ensure, regenerate])
+
+    expect(ensured).toBe(ISSUED_TOKEN)
+    expect(regenerated).toBe(REGEN_TOKEN)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // regenerate 가 ensure 의 발급을 기다린 뒤 강제로 새로 발급하므로 storage 최종값은
+    // 항상 재발급 토큰이어야 한다 — ensure 가 나중에 자기 결과로 덮어쓰면 안 된다.
+    expect(storage.store.get(TOKEN_STORAGE_KEY)).toBe(REGEN_TOKEN)
   })
 })
 

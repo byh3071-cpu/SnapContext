@@ -40,6 +40,10 @@ let inFlight: Promise<string | null> | null = null
  */
 export async function ensureUserToken(): Promise<string | null> {
   if (inFlight) return inFlight
+  // 재발급이 이미 진행 중이면 그 결과를 그대로 재사용한다 — 여기서 별도로 발급을
+  // 또 하나 시작하면 둘 다 storage 에 쓰면서 나중에 끝난 쪽이 owner 를 덮어써
+  // owner 파편화(같은 사용자가 서로 다른 owner 로 갈라짐)로 이어진다.
+  if (regenerateInFlight) return regenerateInFlight
   inFlight = resolveUserToken()
   try {
     return await inFlight
@@ -64,6 +68,13 @@ let regenerateInFlight: Promise<string> | null = null
  */
 export async function regenerateUserToken(): Promise<string> {
   if (regenerateInFlight) return regenerateInFlight
+  // ensure 발급이 이미 진행 중이면 먼저 그 결과를 흡수(대기)한 뒤에 강제 재발급을
+  // 시작한다 — 순서를 지키지 않으면 ensure 가 나중에 storage 에 쓰면서 방금 재발급한
+  // 새 토큰을 구 토큰으로 덮어써 재발급이 조용히 무효화된다. ensure 실패는 여기서
+  // 무시한다 — 재발급은 ensure 결과와 무관하게 항상 강제로 진행해야 한다.
+  if (inFlight) {
+    await inFlight.catch(() => null)
+  }
   regenerateInFlight = performRegenerate()
   try {
     return await regenerateInFlight

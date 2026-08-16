@@ -15,6 +15,13 @@ export type CaptureHistoryItem = {
   thumbnail: string
   imageBase64?: string
   pinsCount: number
+  /**
+   * 저장 시점에 주석(가리기·화살표·형광펜·자유선)이 하나라도 있었는지 — 주석 자체는
+   * 저장하지 않는다(PRD-0.4.3 비목표: 세션-로컬). 히스토리 복원 시 "주석은 복원되지
+   * 않는다" 고지를 항상 띄우는 대신, 실제로 주석이 있었던 캡처에만 조건부로 띄우기
+   * 위한 최소 신호(pinsCount 와 같은 패턴).
+   */
+  hasAnnotations: boolean
   contextPack?: ContextPack
 }
 
@@ -25,6 +32,7 @@ export type SaveCaptureInput = Omit<CaptureHistoryItem, 'thumbnail'> & {
 
 export type UpdateCaptureAnnotationsInput = {
   pinsCount: number
+  hasAnnotations: boolean
   contextPack: ContextPack
 }
 
@@ -145,6 +153,7 @@ export async function saveCapture(input: SaveCaptureInput): Promise<void> {
     thumbnail,
     imageBase64,
     pinsCount: input.pinsCount,
+    hasAnnotations: input.hasAnnotations,
     contextPack: input.contextPack
   }
 
@@ -172,6 +181,7 @@ export async function updateCaptureAnnotations(
           ? {
               ...item,
               pinsCount: input.pinsCount,
+              hasAnnotations: input.hasAnnotations,
               contextPack: input.contextPack
             }
           : item

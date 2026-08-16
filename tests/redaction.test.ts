@@ -197,4 +197,103 @@ describe('applyRedactBoxes', () => {
 
     expect(Array.from(data)).toEqual(Array.from(original))
   })
+
+  // ---- 0.4.3 critic 지적 — 아래는 toPx(%, size) 산출 형태(비정수)·경계값을 실제로
+  // floor/ceil 확장 분기가 실행되도록 짠 케이스다. 기존 케이스는 전부 정수 좌표라
+  // Math.floor/Math.ceil 이 사실상 no-op 이었다.
+
+  it('비정수 좌표(toPx 산출 형태)는 floor(시작)·ceil(끝)으로 바깥쪽으로 확장되어 칠해진다', () => {
+    const width = 6
+    const height = 6
+    const data = makeSentinelData(width, height)
+    const original = data.slice()
+    const color: [number, number, number] = [50, 60, 70]
+
+    // x: floor(1.2)=1 ~ ceil(1.2+2.5)=ceil(3.7)=4 → 열 1,2,3
+    // y: floor(1.4)=1 ~ ceil(1.4+2.3)=ceil(3.7)=4 → 행 1,2,3
+    // (정수 좌표였다면 반올림 없이 그대로였을 값들 — floor/ceil 이 실제로 값을 바꾼다)
+    applyRedactBoxes(data, width, height, [{ x: 1.2, y: 1.4, w: 2.5, h: 2.3 }], color)
+
+    for (let y = 1; y <= 3; y++) {
+      for (let x = 1; x <= 3; x++) {
+        const idx = pixelIndex(x, y, width)
+        expect([data[idx], data[idx + 1], data[idx + 2], data[idx + 3]]).toEqual([
+          50,
+          60,
+          70,
+          255
+        ])
+      }
+    }
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (y >= 1 && y <= 3 && x >= 1 && x <= 3) continue
+        const idx = pixelIndex(x, y, width)
+        expect([data[idx], data[idx + 1], data[idx + 2], data[idx + 3]]).toEqual([
+          original[idx],
+          original[idx + 1],
+          original[idx + 2],
+          original[idx + 3]
+        ])
+      }
+    }
+  })
+
+  it('1×1px 박스는 정확히 픽셀 1개만 칠한다', () => {
+    const width = 4
+    const height = 4
+    const data = makeSentinelData(width, height)
+    const original = data.slice()
+
+    applyRedactBoxes(data, width, height, [{ x: 2, y: 2, w: 1, h: 1 }], [1, 2, 3])
+
+    const idx = pixelIndex(2, 2, width)
+    expect([data[idx], data[idx + 1], data[idx + 2], data[idx + 3]]).toEqual([1, 2, 3, 255])
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (x === 2 && y === 2) continue
+        const i = pixelIndex(x, y, width)
+        expect([data[i], data[i + 1], data[i + 2], data[i + 3]]).toEqual([
+          original[i],
+          original[i + 1],
+          original[i + 2],
+          original[i + 3]
+        ])
+      }
+    }
+  })
+
+  it('이미지 전체를 덮는 박스는 모든 픽셀을 칠한다', () => {
+    const width = 3
+    const height = 3
+    const data = makeSentinelData(width, height)
+
+    applyRedactBoxes(data, width, height, [{ x: 0, y: 0, w: width, h: height }], [9, 9, 9])
+
+    for (let i = 0; i < data.length; i += 4) {
+      expect([data[i], data[i + 1], data[i + 2], data[i + 3]]).toEqual([9, 9, 9, 255])
+    }
+  })
+
+  it('이미지 경계를 완전히 벗어난 박스(양쪽 방향 모두)는 아무 것도 칠하지 않는다', () => {
+    const width = 4
+    const height = 4
+    const data = makeSentinelData(width, height)
+    const original = data.slice()
+
+    applyRedactBoxes(
+      data,
+      width,
+      height,
+      [
+        // 오른쪽·아래로 완전히 벗어남
+        { x: 10, y: 10, w: 5, h: 5 },
+        // 왼쪽·위로 완전히 벗어남(음수 전체)
+        { x: -10, y: -10, w: 3, h: 3 }
+      ],
+      [1, 1, 1]
+    )
+
+    expect(Array.from(data)).toEqual(Array.from(original))
+  })
 })

@@ -22,10 +22,18 @@ const SHORTCUTS: readonly ShortcutEntry[] = [
   { label: 'PNG 저장', value: '버튼에서 실행', isKey: false }
 ]
 
+export type ShortcutsHelpDeps = {
+  /** 토큰 재발급 성공 직후 호출 — ImageActions 의 토큰 상태 표시(§04)가 stale 로 남지
+   * 않도록 App 이 이 콜백에서 갱신을 배선한다(컴포넌트 간 직접 참조 대신 콜백 주입 —
+   * packRef.api 등 기존 관례와 동일). */
+  onTokenRegenerated?: () => void
+}
+
 /** 자주 쓰는 AI 연결은 본문에 두고, 설정에는 단축키와 보관 기간만 둔다. */
 export function mountShortcutsHelp(
   masthead: HTMLElement,
-  trigger: HTMLButtonElement
+  trigger: HTMLButtonElement,
+  deps: ShortcutsHelpDeps = {}
 ): void {
   const panel = document.createElement('div')
   panel.className = 'help-panel shortcuts-help'
@@ -147,6 +155,7 @@ export function mountShortcutsHelp(
       try {
         const token = await regenerateUserToken()
         tokenStatus.textContent = `재발급 완료: ${maskToken(token)}`
+        deps.onTokenRegenerated?.()
       } catch (error) {
         console.warn('[settings] 토큰 재발급 실패', error)
         tokenStatus.textContent = '토큰 재발급에 실패했습니다. 다시 시도해 주세요.'
