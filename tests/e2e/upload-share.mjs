@@ -154,7 +154,10 @@ async function main() {
         !initialSetup.includes(TOKEN)
     )
     for (const client of ['cursor', 'codex']) {
-      await page.locator('#ai-relay-client').selectOption(client)
+      // 0.4.4: 벤더 아이콘 드롭다운으로 교체(role=listbox) — 네이티브 select가 아니라
+      // 트리거 클릭 → 옵션 클릭으로 선택한다(vendor-logo-policy.md 승인 A안).
+      await page.locator('#ai-relay-client').click()
+      await page.locator(`#ai-relay-client-listbox [data-value="${client}"]`).click()
       const setup = await page.locator('.ai-relay__setup').textContent()
       check(`${client} 연결 안내 노출`, setup.includes('/mcp'))
     }

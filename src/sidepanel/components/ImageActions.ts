@@ -42,6 +42,7 @@ import {
 import { getStorageItem, setStorageItem } from '../../storage'
 import { showConfirm } from '../confirm-dialog'
 import { swissIcon, type SwissIconName } from '../utils/swiss-icons'
+import { vendorIcon } from '../utils/vendor-icons'
 import { mkSecHead } from '../utils/section'
 
 const PRIVATE_CONSENT_KEY = 'snapcontext.privateUploadConsent'
@@ -98,6 +99,183 @@ function buildContextV2(
     pins: context.pins,
     intent,
     mode
+  }
+}
+
+interface VendorSelectApi {
+  wrap: HTMLDivElement
+  getValue: () => McpClient
+  onChange: (listener: (client: McpClient) => void) => void
+}
+
+/**
+ * "사용할 AI 도구" 커스텀 드롭다운 — 네이티브 <option>엔 이미지가 안 들어가 벤더 아이콘을
+ * 넣으려면 role=listbox 위젯이 필요하다(WAI-ARIA select-only listbox 패턴, aria-activedescendant).
+ * 저장값·문자열(McpClient)은 기존 <select> 와 동일 — 연동 로직(renderSetup)은 손대지 않는다.
+ */
+function mountVendorSelect(triggerId: string, listboxId: string): VendorSelectApi {
+  let current: McpClient = MCP_CLIENTS[0]
+  let activeIndex = 0
+  const listeners: Array<(client: McpClient) => void> = []
+  const options: HTMLLIElement[] = []
+  const optionId = (client: McpClient): string => `${listboxId}-${client}`
+
+  const triggerIcon = document.createElement('span')
+  triggerIcon.className = 'vendor-select__icon'
+  triggerIcon.setAttribute('aria-hidden', 'true')
+  const triggerLabel = document.createElement('span')
+  triggerLabel.className = 'vendor-select__label'
+
+  const trigger = document.createElement('button')
+  trigger.type = 'button'
+  trigger.id = triggerId
+  trigger.className = 'field vendor-select__trigger'
+  trigger.setAttribute('aria-haspopup', 'listbox')
+  trigger.setAttribute('aria-expanded', 'false')
+  trigger.setAttribute('aria-controls', listboxId)
+  trigger.append(triggerIcon, triggerLabel, swissIcon('chev', 'ic-sm vendor-select__chev'))
+
+  const list = document.createElement('ul')
+  list.id = listboxId
+  list.className = 'vendor-select__list'
+  list.setAttribute('role', 'listbox')
+  list.setAttribute('aria-label', '사용할 AI 도구')
+  list.tabIndex = -1
+  list.hidden = true
+
+  const updateTrigger = (): void => {
+    triggerIcon.replaceChildren(vendorIcon(current))
+    triggerLabel.textContent = CLIENT_LABELS[current]
+  }
+
+  const updateSelected = (): void => {
+    for (const option of options) {
+      option.setAttribute(
+        'aria-selected',
+        option.dataset.value === current ? 'true' : 'false'
+      )
+    }
+  }
+
+  const updateActive = (): void => {
+    options.forEach((option, index) => {
+      option.classList.toggle('is-active', index === activeIndex)
+    })
+    const activeOption = options[activeIndex]
+    if (activeOption) {
+      list.setAttribute('aria-activedescendant', activeOption.id)
+      activeOption.scrollIntoView({ block: 'nearest' })
+    }
+  }
+
+  const openList = (): void => {
+    list.hidden = false
+    trigger.setAttribute('aria-expanded', 'true')
+    activeIndex = MCP_CLIENTS.indexOf(current)
+    updateActive()
+    list.focus()
+  }
+
+  const closeList = (): void => {
+    list.hidden = true
+    trigger.setAttribute('aria-expanded', 'false')
+    list.removeAttribute('aria-activedescendant')
+  }
+
+  const selectClient = (client: McpClient): void => {
+    current = client
+    updateTrigger()
+    updateSelected()
+    for (const listener of listeners) listener(client)
+  }
+
+  for (const client of MCP_CLIENTS) {
+    const option = document.createElement('li')
+    option.id = optionId(client)
+    option.className = 'vendor-select__option'
+    option.setAttribute('role', 'option')
+    option.dataset.value = client
+    option.setAttribute('aria-selected', 'false')
+    const icon = document.createElement('span')
+    icon.className = 'vendor-select__icon'
+    icon.setAttribute('aria-hidden', 'true')
+    icon.append(vendorIcon(client))
+    const label = document.createElement('span')
+    label.textContent = CLIENT_LABELS[client]
+    option.append(icon, label)
+    option.addEventListener('click', () => {
+      selectClient(client)
+      closeList()
+      trigger.focus()
+    })
+    list.append(option)
+    options.push(option)
+  }
+
+  updateTrigger()
+  updateSelected()
+
+  trigger.addEventListener('click', () => {
+    if (list.hidden) openList()
+    else closeList()
+  })
+  trigger.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      openList()
+    }
+  })
+  list.addEventListener('keydown', (event) => {
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault()
+        activeIndex = Math.min(activeIndex + 1, options.length - 1)
+        updateActive()
+        break
+      case 'ArrowUp':
+        event.preventDefault()
+        activeIndex = Math.max(activeIndex - 1, 0)
+        updateActive()
+        break
+      case 'Enter':
+      case ' ':
+        event.preventDefault()
+        selectClient(MCP_CLIENTS[activeIndex])
+        closeList()
+        trigger.focus()
+        break
+      case 'Escape':
+        event.preventDefault()
+        closeList()
+        trigger.focus()
+        break
+      case 'Tab':
+        closeList()
+        break
+      default:
+        break
+    }
+  })
+  document.addEventListener('click', (event) => {
+    const target = event.target
+    if (
+      !list.hidden &&
+      target instanceof Node &&
+      !list.contains(target) &&
+      !trigger.contains(target)
+    ) {
+      closeList()
+    }
+  })
+
+  const wrap = document.createElement('div')
+  wrap.className = 'vendor-select'
+  wrap.append(trigger, list)
+
+  return {
+    wrap,
+    getValue: () => current,
+    onChange: (listener) => listeners.push(listener)
   }
 }
 
@@ -168,22 +346,14 @@ export function mountImageActions(
   clientLabel.className = 'lbl'
   clientLabel.htmlFor = 'ai-relay-client'
   clientLabel.textContent = '사용할 AI 도구'
-  const clientSelect = document.createElement('select')
-  clientSelect.id = 'ai-relay-client'
-  clientSelect.className = 'field'
-  for (const client of MCP_CLIENTS) {
-    const option = document.createElement('option')
-    option.value = client
-    option.textContent = CLIENT_LABELS[client]
-    clientSelect.append(option)
-  }
+  const vendorSelect = mountVendorSelect('ai-relay-client', 'ai-relay-client-listbox')
   const setupText = document.createElement('pre')
   setupText.className = 'ai-relay__setup'
   const setupCopyButton = createButton('연결 안내 복사', 'copy')
 
   const endpoint: string | undefined = import.meta.env.VITE_UPLOAD_ENDPOINT
   const renderSetup = (): void => {
-    const client = MCP_CLIENTS.find((value) => value === clientSelect.value)
+    const client = MCP_CLIENTS.find((value) => value === vendorSelect.getValue())
     if (!client || !endpoint) {
       setupText.textContent = '연결 서버가 설정되지 않았습니다.'
       setupCopyButton.disabled = true
@@ -200,7 +370,7 @@ export function mountImageActions(
     tokenRow,
     pasteRow,
     clientLabel,
-    clientSelect,
+    vendorSelect.wrap,
     setupText,
     setupCopyButton
   )
@@ -375,7 +545,7 @@ export function mountImageActions(
     })()
   })
 
-  clientSelect.addEventListener('change', renderSetup)
+  vendorSelect.onChange(renderSetup)
   setupCopyButton.addEventListener('click', () => {
     void copyText(setupText.textContent ?? '', '연결 안내를 복사했습니다.')
   })
