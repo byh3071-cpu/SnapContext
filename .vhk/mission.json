@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "objective": "SnapContext 0.4.2 최종 통합 구현 — 사람 직접 전달(AI 채팅에 이미지→요청 2단계)과 MCP private 저장을 분리한다. 신규 v2는 SharedContextV2(intent·neutral mode), sc_ owner 필수 POST/GET/DELETE /captures, 5분 서명 /pi, HMAC 파생 R2 key, generic NOT_FOUND tool error, admin 읽기 전용, R2 우선 즉시 삭제를 사용한다. 레거시 /upload·/i·/s는 기존 확장 호환을 위해 한시 유지하되 신규 확장은 fallback하지 않는다. 개인정보·온보딩·용어·버전 0.4.2를 일치시킨다. 승인 근거: ADR-015~019 Accepted(2026-08-05), Orca 없이 단일 worktree 구현 사용자 승인. 미해결 사람 게이트: 배포·시크릿/Cloudflare 설정 적용·스토어 제출·레거시 write 차단/제거·merge/tag.",
+  "objective": "SnapContext 0.4.3 구현 (ext-only, worker 무변경) — B: 주석 도구 4종(가리기=솔리드 박스 파괴적 bake·화살표·형광펜·자유선)을 renderAnnotatedPngBlob 캔버스 파이프라인과 사이드패널 툴바 UI로 추가. 편집 중 벡터 유지, 내보내기 3경로(다운로드·복사·업로드) 단일 bake, canvas.toBlob 신규 인코딩. A: 설정에 토큰 재발급 버튼(POST /token 새 sc_ 교체, 정직 고지). 근거: PRD-0.4.3 approved(2026-08-16)·ADR-020·021. 금지: worker/** 변경, 모자이크·블러·오버레이 가림, 스토어 제출. 사람 게이트: 머지·tag v0.4.3.",
   "scope": [
     "src/**",
     "tests/**",
@@ -22,5 +22,5 @@
     "docs/ui-audit/**"
   ],
   "createdAt": "2026-06-04T13:32:15.559Z",
-  "updatedAt": "2026-08-05T04:00:00.000Z"
+  "updatedAt": "2026-08-16T00:00:00.000Z"
 }
