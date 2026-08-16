@@ -289,6 +289,35 @@ export type PinItem = {
 
 }
 
+/** 가리기 — % 좌표계(0~100)의 파괴적 redaction 박스. ADR-021 참고. */
+export type RedactBoxAnnotation = {
+  id: number
+  kind: 'redact'
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** 화살표 — 시작점→끝점, % 좌표계(0~100). */
+export type ArrowAnnotation = {
+  id: number
+  kind: 'arrow'
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+/** 형광펜·자유선 — 연속된 점 목록, % 좌표계(0~100). */
+export type StrokeAnnotation = {
+  id: number
+  kind: 'highlight' | 'freehand'
+  points: Array<{ x: number; y: number }>
+}
+
+export type Annotation = RedactBoxAnnotation | ArrowAnnotation | StrokeAnnotation
+
 export type SharedContext = {
   v: 1
   sourceUrl: string

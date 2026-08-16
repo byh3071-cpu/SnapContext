@@ -1,4 +1,5 @@
 import type {
+  Annotation,
   PinItem,
   SharedContext,
   SharedContextMode,
@@ -105,6 +106,7 @@ export function mountImageActions(
     hasCapture: () => boolean
     getImage: () => string | null
     getPins: () => PinItem[]
+    getAnnotations: () => Annotation[]
     getContext: () => SharedContext | null
     showToast: (message: string, kind?: 'info' | 'error') => void
   }
@@ -383,7 +385,7 @@ export function mountImageActions(
       return
     }
     try {
-      await copyAnnotatedPngToClipboard(image, deps.getPins())
+      await copyAnnotatedPngToClipboard(image, deps.getPins(), deps.getAnnotations())
       deps.showToast('이미지를 클립보드에 복사했습니다.', 'info')
     } catch (error) {
       deps.showToast(toKoreanErrorMessage(error), 'error')
@@ -404,7 +406,8 @@ export function mountImageActions(
         await downloadAnnotatedPng(
           image,
           deps.getPins(),
-          `snapcontext_${Date.now()}.png`
+          `snapcontext_${Date.now()}.png`,
+          deps.getAnnotations()
         )
         deps.showToast('PNG 저장을 시작했습니다.', 'info')
       } catch (error) {
@@ -440,7 +443,7 @@ export function mountImageActions(
         saving = true
         saveButton.disabled = true
         saveButtonText.textContent = '저장 중…'
-        const blob = await renderAnnotatedPngBlob(image, deps.getPins())
+        const blob = await renderAnnotatedPngBlob(image, deps.getPins(), deps.getAnnotations())
         const contextV2 = buildContextV2(
           context,
           intentInput.value.trim(),

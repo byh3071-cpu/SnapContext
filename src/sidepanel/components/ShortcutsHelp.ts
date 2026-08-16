@@ -4,6 +4,7 @@ import {
   loadShareExpiryDays,
   saveShareExpiryDays
 } from '../../utils/share-expiry'
+import { maskToken, regenerateUserToken } from '../../utils/token'
 import { swissIcon } from '../utils/swiss-icons'
 
 interface ShortcutEntry {
@@ -117,6 +118,44 @@ export function mountShortcutsHelp(
     })()
   })
 
+  // 연결 토큰 — ADR-020 Tier 1(재발급 lite). 완전 revoke(denylist)는 0.4.6 이연.
+  const tokenLabel = document.createElement('div')
+  tokenLabel.className = 'set-group-label shortcuts-help__token-label'
+  tokenLabel.textContent = '연결 토큰'
+  const tokenRow = document.createElement('div')
+  tokenRow.className = 'help-row shortcuts-help__token-row'
+  const tokenRegenButton = document.createElement('button')
+  tokenRegenButton.type = 'button'
+  tokenRegenButton.className = 'btn btn-ghost'
+  tokenRegenButton.append(swissIcon('spinner', 'ic-sm'))
+  const tokenRegenButtonText = document.createElement('span')
+  tokenRegenButtonText.textContent = '토큰 재발급'
+  tokenRegenButton.append(tokenRegenButtonText)
+  tokenRow.append(tokenRegenButton)
+  const tokenNote = document.createElement('p')
+  tokenNote.className = 'help-note shortcuts-help__token-note'
+  tokenNote.textContent =
+    '이전 토큰은 기존 캡처가 만료될 때까지(최대 30일) 유효합니다.'
+  const tokenStatus = document.createElement('p')
+  tokenStatus.className = 'help-note shortcuts-help__token-status'
+  tokenStatus.setAttribute('role', 'status')
+
+  tokenRegenButton.addEventListener('click', () => {
+    void (async () => {
+      tokenRegenButton.disabled = true
+      tokenStatus.textContent = '재발급하는 중…'
+      try {
+        const token = await regenerateUserToken()
+        tokenStatus.textContent = `재발급 완료: ${maskToken(token)}`
+      } catch (error) {
+        console.warn('[settings] 토큰 재발급 실패', error)
+        tokenStatus.textContent = '토큰 재발급에 실패했습니다. 다시 시도해 주세요.'
+      } finally {
+        tokenRegenButton.disabled = false
+      }
+    })()
+  })
+
   panel.append(
     headRow,
     shortcutLabel,
@@ -124,7 +163,11 @@ export function mountShortcutsHelp(
     shortcutNote,
     retentionLabel,
     retentionRow,
-    retentionNote
+    retentionNote,
+    tokenLabel,
+    tokenRow,
+    tokenNote,
+    tokenStatus
   )
   masthead.append(panel)
 

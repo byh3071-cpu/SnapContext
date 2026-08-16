@@ -6,6 +6,7 @@ import {
   getStoredToken,
   isValidTokenFormat,
   maskToken,
+  regenerateUserToken,
   setUserToken
 } from '../src/utils/token'
 import { stubChromeStorage } from './helpers/chrome-storage'
@@ -256,6 +257,89 @@ describe('ensureUserToken', () => {
     await expect(ensureUserToken()).resolves.toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(console.warn).toHaveBeenCalled()
+  })
+})
+
+describe('regenerateUserToken', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_UPLOAD_ENDPOINT', 'https://w.example.dev')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('기존 토큰이 있어도 강제로 POST /token 을 호출해 새 토큰으로 교체한다', async () => {
+    const storage = stubChromeStorage({ [TOKEN_STORAGE_KEY]: VALID_TOKEN })
+    const fetchMock = vi.fn().mockResolvedValue(tokenJson(ISSUED_TOKEN))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(regenerateUserToken()).resolves.toBe(ISSUED_TOKEN)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [calledUrl, opts] = fetchMock.mock.calls[0]
+    expect(calledUrl).toBe('https://w.example.dev/token')
+    expect(opts.method).toBe('POST')
+    expect(storage.store.get(TOKEN_STORAGE_KEY)).toBe(ISSUED_TOKEN)
+  })
+
+  it('서버 500 이면 기존 토큰을 그대로 두고 에러를 던진다', async () => {
+    const storage = stubChromeStorage({ [TOKEN_STORAGE_KEY]: VALID_TOKEN })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('Server misconfigured', { status: 500 }))
+    )
+
+    await expect(regenerateUserToken()).rejects.toThrow()
+    expect(storage.store.get(TOKEN_STORAGE_KEY)).toBe(VALID_TOKEN)
+    expect(storage.set).not.toHaveBeenCalled()
+  })
+
+  it('429(rate limit)이면 기존 토큰을 그대로 두고 에러를 던진다', async () => {
+    const storage = stubChromeStorage({ [TOKEN_STORAGE_KEY]: VALID_TOKEN })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('Too many token requests', { status: 429 }))
+    )
+
+    await expect(regenerateUserToken()).rejects.toThrow()
+    expect(storage.store.get(TOKEN_STORAGE_KEY)).toBe(VALID_TOKEN)
+    expect(storage.set).not.toHaveBeenCalled()
+  })
+
+  it('네트워크 실패면 기존 토큰을 그대로 두고 에러를 던진다', async () => {
+    const storage = stubChromeStorage({ [TOKEN_STORAGE_KEY]: VALID_TOKEN })
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+
+    await expect(regenerateUserToken()).rejects.toThrow()
+    expect(storage.store.get(TOKEN_STORAGE_KEY)).toBe(VALID_TOKEN)
+  })
+
+  it('저장(quota 초과 등)이 실패하면 기존 토큰을 그대로 두고 에러를 던진다', async () => {
+    const storage = stubChromeStorage({ [TOKEN_STORAGE_KEY]: VALID_TOKEN })
+    storage.set.mockRejectedValueOnce(new Error('QUOTA_BYTES quota exceeded'))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(tokenJson(ISSUED_TOKEN)))
+
+    await expect(regenerateUserToken()).rejects.toThrow('QUOTA_BYTES quota exceeded')
+    expect(storage.store.get(TOKEN_STORAGE_KEY)).toBe(VALID_TOKEN)
+    expect(console.warn).toHaveBeenCalled()
+  })
+
+  it('동시 호출 2회가 발급 요청을 1번만 보낸다 (in-flight 가드)', async () => {
+    const storage = stubChromeStorage({ [TOKEN_STORAGE_KEY]: VALID_TOKEN })
+    const fetchMock = vi.fn(async () => tokenJson(ISSUED_TOKEN))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const first = regenerateUserToken()
+    const second = regenerateUserToken()
+    const [a, b] = await Promise.all([first, second])
+
+    expect(a).toBe(ISSUED_TOKEN)
+    expect(b).toBe(ISSUED_TOKEN)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(storage.store.get(TOKEN_STORAGE_KEY)).toBe(ISSUED_TOKEN)
   })
 })
 

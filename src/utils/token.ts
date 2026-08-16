@@ -48,6 +48,44 @@ export async function ensureUserToken(): Promise<string | null> {
   }
 }
 
+// 재발급 전용 in-flight 가드. ensureUserToken 의 inFlight 와는 별개다 — 재발급은
+// 저장된 토큰 유무와 무관하게 항상 새 발급을 강제하므로 같은 변수를 공유하면
+// "이미 유효 토큰이 있어 재사용" 분기와 뒤섞여 강제성이 깨진다.
+let regenerateInFlight: Promise<string> | null = null
+
+/**
+ * 저장된 토큰을 무시하고 서버에 새 토큰을 강제로 발급받아 교체한다 (설정 화면의
+ * "토큰 재발급" 버튼용 — ADR-020 Tier 1).
+ *
+ * ensureUserToken 과 달리 기존 저장값이 유효해도 재사용하지 않고 항상 POST /token 을
+ * 보낸다. 발급이나 저장 중 하나라도 실패하면 기존 토큰을 그대로 둔 채 예외를 던진다 —
+ * 여기서 조용히 실패하면 사용자는 재발급이 안 됐다는 사실을 모른 채 이미 유출됐을 수
+ * 있는 옛 토큰을 계속 신뢰하게 된다.
+ */
+export async function regenerateUserToken(): Promise<string> {
+  if (regenerateInFlight) return regenerateInFlight
+  regenerateInFlight = performRegenerate()
+  try {
+    return await regenerateInFlight
+  } finally {
+    regenerateInFlight = null
+  }
+}
+
+async function performRegenerate(): Promise<string> {
+  const issued = await requestUserToken()
+  if (issued === null) {
+    throw new Error('토큰 재발급에 실패했습니다. 기존 토큰을 계속 사용합니다.')
+  }
+  try {
+    await setStorageItem(TOKEN_STORAGE_KEY, issued)
+  } catch (e) {
+    console.warn('[token] 재발급받은 토큰을 저장하지 못해 기존 토큰을 유지합니다.', e)
+    throw e
+  }
+  return issued
+}
+
 /**
  * 서버가 거부한 토큰을 폐기한다 (401 복구 경로).
  *

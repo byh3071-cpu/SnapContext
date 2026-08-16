@@ -556,6 +556,13 @@ select {
 .shortcuts-help__expiry-select {
   min-width: 84px;
 }
+/* 설정 패널 세 번째 그룹(연결 토큰) — 보관 기간 note 바로 뒤라 위 여백이 필요하다 */
+.shortcuts-help__token-label {
+  margin-top: var(--s-4);
+}
+.shortcuts-help__token-status:empty {
+  display: none;
+}
 
 /* ========================= 섹션 헤딩 (번호 인덱스 01~05) ========================= */
 .sec {

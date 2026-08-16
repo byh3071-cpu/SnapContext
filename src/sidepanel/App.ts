@@ -342,6 +342,7 @@ function init(): void {
     hasCapture: () => capturedImage !== null,
     getImage: () => capturedImage,
     getPins: () => pins,
+    getAnnotations: () => [],
     getContext: () =>
       captureSnapshot
         ? {
