@@ -1402,10 +1402,13 @@ textarea.pin-memo__input {
   margin-bottom: var(--s-3);
 }
 
+/* 사이드패널 폭에선 버튼(전폭 관례)과 행 배치가 공존 불가 — 항상 세로 스택.
+   (행 배치 시 status 0px·input 22px로 찌그러져 한국어 세로 깨짐 실측, 2026-08-17) */
 .ai-relay__token-row,
 .ai-relay__paste-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  flex-direction: column;
   gap: var(--s-2);
 }
 
@@ -1469,13 +1472,6 @@ textarea.pin-memo__input {
   white-space: nowrap;
 }
 
-@media (max-width: 360px) {
-  .ai-relay__token-row,
-  .ai-relay__paste-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
-}
 .publish-block {
   position: relative;
   border: var(--rule-mid) solid var(--ink);
