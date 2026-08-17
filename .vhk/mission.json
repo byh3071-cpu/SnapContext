@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "objective": "SnapContext 0.4.3 구현 (ext-only, worker 무변경) — B: 주석 도구 4종(가리기=솔리드 박스 파괴적 bake·화살표·형광펜·자유선)을 renderAnnotatedPngBlob 캔버스 파이프라인과 사이드패널 툴바 UI로 추가. 편집 중 벡터 유지, 내보내기 3경로(다운로드·복사·업로드) 단일 bake, canvas.toBlob 신규 인코딩. A: 설정에 토큰 재발급 버튼(POST /token 새 sc_ 교체, 정직 고지). 근거: PRD-0.4.3 approved(2026-08-16)·ADR-020·021. 금지: worker/** 변경, 모자이크·블러·오버레이 가림, 스토어 제출. 사람 게이트: 머지·tag v0.4.3.",
+  "objective": "SnapContext 0.4.4 구현 (worker-only, 확장 src/ 무변경) — 레거시 공개 경로 제거: /s 뷰어·무서명 /i·POST /upload를 명시 410 Gone(+Cache-Control: no-store, OPTIONS 포함)으로 교체, viewer dead code·레거시 읽기 fallback(pack.ts raw-ID·/pi·readExpiry legacy는 반드시 짝, 단독 커밋)·레거시 테스트 47+개 정리. test-first(계약 테스트 선투입 red). 근거: PRD-0.4.4 approved(2026-08-17)·ADR-015 결정#6·plan-audit 3회차. 금지: src/ 확장 변경, parseSharedContext·allowUploadRequest·lib 공유 상수 삭제, 배포·tag(사람). 사람 게이트: R2 잔존 실측·wrangler deploy·라이브 스모크·tag v0.4.4.",
   "scope": [
     "src/**",
     "tests/**",
@@ -22,5 +22,5 @@
     "docs/ui-audit/**"
   ],
   "createdAt": "2026-06-04T13:32:15.559Z",
-  "updatedAt": "2026-08-16T00:00:00.000Z"
+  "updatedAt": "2026-08-17T00:00:00.000Z"
 }
