@@ -99,15 +99,16 @@ npx wrangler d1 execute snapcontext-captures --remote --command "DELETE FROM cap
 | # | 결과 |
 |---|---|
 | 1 | **PASS** — `GET /s`·`GET /i`·`POST /upload`·`OPTIONS /upload` 4/4 = 410 + `Cache-Control: no-store` |
-| 2 | **요한 잔여** — 실제 확장에서 캡처→저장(201). 자동화 불가(Claude 브라우저 확장 미연결·API 직접 쓰기는 프로드 실데이터 생성이라 사람 게이트) |
-| 3 | **부분 PASS** — 유령 행 노출 0 실측(만료 필터+NOT_FOUND). 신규 캡처의 목록·삭제는 2와 함께 확인 |
-| 4 | **요한 잔여** — 신규 캡처 필요. 이 세션 실측: 라이브 /mcp에 대해 snap_history(빈 목록 정상)·snap_pack(NOT_FOUND 정상) 응답 자체는 확인됨 |
+| 2 | **PASS**(2026-08-17 23:07) — 실제 확장에서 캡처→저장 성공. 도중 결함 2건 발견·해결: ①dist가 dogfood 로컬 endpoint로 빌드돼 있던 것(재빌드, troubleshooting/2026-08-17-dogfood-dist-local-endpoint.md) ②프로덕션 D1에 0002 마이그레이션 미적용→500(apply, troubleshooting/2026-08-17-d1-migration-drift-500.md) |
+| 3 | **PASS** — 신규 캡처 목록 표시·전 행 열림(유령 0). 삭제 후 사라짐은 요한 1클릭 잔여 |
+| 4 | **PASS** — snap_history→snap_analyze digest 정상·`/pi` 서명 URL로 이미지 200(image/png 640KB) |
 | 5 | **PASS** — /pi 서명 변조 403 · 만료 exp 403 (5분 경과 재사용 거부와 등가) |
 | 6 | **PASS(구성적)** — 배포 번들=현 소스(mcp.ts serverInfo `0.4.4`)·Version ID 일치. 라이브 initialize POST는 자동화 권한상 미실행 — 2 확인 시 클라이언트 serverInfo로 겸사 확인 가능 |
 | 7 | **PASS** — tail 25초: 앱 console 출력 0·Authorization 미표시. 플랫폼 요청 레코드의 query `sig=` 표시는 0.4.2 릴리즈 때 실측·수용된 기지 사항(capture id CF REDACTED → 재구성 불가, TASKS 참조) |
 
 ### 잔여 (전부 요한 — 완료 후 태그)
 
-1. 위 D1 DELETE 1줄
-2. 확장에서 캡처 1건 → 스모크 2·3·4 확인 (MCP 확인은 Claude Code 세션에 "snap_history 확인해줘"로 위임 가능)
-3. `git tag v0.4.4 && git push origin v0.4.4`
+1. ~~위 D1 DELETE 1줄~~ ✅ 2026-08-17 요한 실행, 재조회 0행 확인
+2. ~~D1 마이그레이션 적용~~ ✅ 2026-08-17 요한 실행(`migrations apply` 0002 ✅) — 상세: troubleshooting/2026-08-17-d1-migration-drift-500.md. **차기 런북 고정 단계**: 배포 전 `wrangler d1 migrations list --remote` 빈 목록 확인.
+3. ~~확장에서 캡처 1건 → 스모크 2·3·4~~ ✅ 2026-08-17 23:07 저장·목록·digest·이미지 200 전부 확인. 삭제 후 사라짐만 요한 1클릭 잔여.
+4. `git tag v0.4.4 && git push origin v0.4.4`
