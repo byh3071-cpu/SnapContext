@@ -104,21 +104,7 @@ describe('POST /token', () => {
     expect(denied.status).toBe(429)
   })
 
-  it('/upload 에는 Origin 검증을 추가하지 않음 (회귀)', async () => {
-    const PNG = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4
-    ])
-    const form = new FormData()
-    form.set('image', new Blob([PNG], { type: 'image/png' }), 'shot.png')
-    const res = await worker.fetch(
-      new Request('https://w.test/upload', {
-        method: 'POST',
-        headers: { Origin: 'https://evil.example' },
-        body: form
-      }),
-      makeEnv(),
-      ctx
-    )
-    expect(res.status).toBe(200)
-  })
+  // "/upload 에는 Origin 검증을 추가하지 않음" 회귀는 0.4.4(ADR-015 2차)에서 /upload
+  // 자체가 폐쇄되며 대상이 사라졌다 — Origin 무관 모두 410(legacy-gone.test.ts 가 고정).
+  // /captures 는 Origin 이 아니라 bearer 토큰으로 접근을 제어한다(private-capture-routes.test.ts).
 })

@@ -9,7 +9,6 @@ import {
   DAY_MS,
   DEFAULT_EXPIRY_DAYS,
   EXPIRY_DAYS_ALLOWLIST,
-  MAX_AGE_MS,
   PNG_MAGIC
 } from '../src/lib'
 
@@ -25,14 +24,18 @@ describe('isPngMagic', () => {
 })
 
 describe('readExpiry', () => {
-  it('메타 없음(레거시): uploaded + 7일 · source=legacy', () => {
+  it('메타 없음: 즉시 만료(invalid) — 레거시 7일 연장 fallback 삭제됨 (ADR-015 2차)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const info = readExpiry({ uploaded: new Date(T) })
-    expect(info.expiresAtMs).toBe(T + MAX_AGE_MS)
-    expect(info.retentionDays).toBe(DEFAULT_EXPIRY_DAYS)
-    expect(info.source).toBe('legacy')
+    // 조용히 7일 연장하면 fallback 부활이다 — uploaded 시각 그 자체로 즉시 만료 처리한다
+    expect(info.expiresAtMs).toBe(T)
+    expect(info.retentionDays).toBe(0)
+    expect(info.source).toBe('invalid')
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 
-  it('메타 1일: 짧은 쪽이 이긴다 — T+2d 에 만료(레거시였다면 미만료)', () => {
+  it('메타 1일: T+2d 에 만료', () => {
     const info = readExpiry({
       uploaded: new Date(T),
       customMetadata: { expiresAt: new Date(T + DAY_MS).toISOString() }
@@ -40,12 +43,9 @@ describe('readExpiry', () => {
     expect(info.source).toBe('metadata')
     expect(info.retentionDays).toBe(1)
     expect(isExpiredAt(info.expiresAtMs, T + 2 * DAY_MS)).toBe(true)
-    // 대조군: 같은 uploaded 라도 메타가 없으면 아직 살아 있다 → 메타를 실제로 읽었다는 증거
-    const legacy = readExpiry({ uploaded: new Date(T) })
-    expect(isExpiredAt(legacy.expiresAtMs, T + 2 * DAY_MS)).toBe(false)
   })
 
-  it('메타 30일: 긴 쪽이 이긴다 — T+8d 에 미만료(레거시였다면 만료)', () => {
+  it('메타 30일: T+8d 에 미만료', () => {
     const info = readExpiry({
       uploaded: new Date(T),
       customMetadata: { expiresAt: new Date(T + 30 * DAY_MS).toISOString() }
@@ -53,8 +53,6 @@ describe('readExpiry', () => {
     expect(info.source).toBe('metadata')
     expect(info.retentionDays).toBe(30)
     expect(isExpiredAt(info.expiresAtMs, T + 8 * DAY_MS)).toBe(false)
-    const legacy = readExpiry({ uploaded: new Date(T) })
-    expect(isExpiredAt(legacy.expiresAtMs, T + 8 * DAY_MS)).toBe(true)
   })
 
   it('파싱 실패: source=invalid + 즉시 만료 (조용히 7일로 되돌리지 않는다)', () => {

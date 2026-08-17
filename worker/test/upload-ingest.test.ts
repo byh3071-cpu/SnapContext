@@ -1,59 +1,32 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import worker from '../src/index'
-import { DAY_MS, MAX_AGE_MS } from '../src/lib'
-import { listCaptures } from '../src/history'
+import { generateUserToken } from '../src/token'
+import { createSignedImageUrl } from '../src/image-url'
 import type { Env } from '../src/env'
-import { generateUserToken, ownerFromToken } from '../src/token'
+
+/**
+ * 0.4.4(ADR-015 2차): 레거시 POST /upload·GET /s·GET /i 는 사라졌다(index.test.ts·
+ * upload-bearer.test.ts 삭제, T2/T4). 이 파일에 남기는 건 "SharedContext 화이트리스트
+ * 밖 필드가 새 나가지 않는다"는 누출 회귀 2건뿐 — 검증 경로만 현재 라우트
+ * (POST /captures·GET /pi/{id})로 옮겼다. 나머지(D1 INSERT 매핑·expiresInDays
+ * allowlist·snap_history 연동)는 private-capture-routes.test.ts·lib.test.ts 에
+ * 이미 있다.
+ */
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4])
+const SIGNING_SECRET = 'upload-ingest-leak-secret'
 
-const SHARED_CTX = {
-  v: 1 as const,
-  sourceUrl: 'https://example.com/page',
-  sourceTitle: 'Example Title',
-  captureType: 'visible',
-  capturedAt: '2026-07-10T00:00:00.000Z',
-  viewport: { width: 1280, height: 720 },
-  pins: [
-    { id: 1, memo: 'a' },
-    { id: 2, memo: 'b' }
-  ]
-}
-
-type StoredObj = {
-  bytes?: Uint8Array
+interface StoredObj {
+  bytes: Uint8Array
   uploaded: Date
-  contentType?: string
-  text?: string
   customMetadata?: Record<string, string>
+  contentType?: string
 }
 
-interface CaptureInsert {
-  id: string
-  created_at: string
-  url: string
-  title: string
-  capture_type: string
-  pin_count: number
-  expires_at: string
-}
-
-function makeUploadEnv(opts?: {
-  d1Fail?: boolean
-  cleanupFail?: boolean
-  now?: number
-}): {
-  env: Env
-  objects: Map<string, StoredObj>
-  inserts: CaptureInsert[]
-  deleted: string[]
-} {
+function makeEnv(): { env: Env; objects: Map<string, StoredObj> } {
   const objects = new Map<string, StoredObj>()
-  const inserts: CaptureInsert[] = []
-  const deleted: string[] = []
-  const now = opts?.now ?? Date.now()
-
   const env: Env = {
+    TOKEN_SIGNING_SECRET: SIGNING_SECRET,
     BUCKET: {
       async get(key: string) {
         const o = objects.get(key)
@@ -61,15 +34,11 @@ function makeUploadEnv(opts?: {
         return {
           body: o.bytes,
           uploaded: o.uploaded,
-          customMetadata: o.customMetadata,
           httpMetadata: { contentType: o.contentType },
-          text: async () => o.text ?? ''
+          customMetadata: o.customMetadata,
+          text: async () => new TextDecoder().decode(o.bytes),
+          arrayBuffer: async () => o.bytes.buffer
         }
-      },
-      async head(key: string) {
-        const o = objects.get(key)
-        if (!o) return null
-        return { uploaded: o.uploaded, customMetadata: o.customMetadata }
       },
       async put(
         key: string,
@@ -79,412 +48,111 @@ function makeUploadEnv(opts?: {
           customMetadata?: Record<string, string>
         }
       ) {
-        const common = {
-          uploaded: new Date(now),
+        const bytes =
+          typeof value === 'string'
+            ? new TextEncoder().encode(value)
+            : new Uint8Array(value)
+        objects.set(key, {
+          bytes,
+          uploaded: new Date(),
           contentType: putOpts?.httpMetadata?.contentType,
           customMetadata: putOpts?.customMetadata
-        }
-        if (typeof value === 'string') {
-          objects.set(key, { ...common, text: value })
-        } else {
-          objects.set(key, { ...common, bytes: new Uint8Array(value) })
-        }
-      },
-      async delete(key: string) {
-        if (opts?.cleanupFail) {
-          throw new Error('R2 delete failed')
-        }
-        deleted.push(key)
-        objects.delete(key)
+        })
       }
     } as unknown as R2Bucket,
     DB: {
-      prepare(sql: string) {
+      prepare() {
         return {
-          bind(...args: unknown[]) {
-            return {
-              async run() {
-                if (opts?.d1Fail) {
-                  throw new Error('D1 INSERT failed')
-                }
-                if (/INSERT\s+INTO\s+captures/i.test(sql)) {
-                  inserts.push({
-                    id: String(args[0]),
-                    created_at: String(args[1]),
-                    url: String(args[2]),
-                    title: String(args[3]),
-                    capture_type: String(args[4]),
-                    pin_count: Number(args[5]),
-                    expires_at: String(args[6])
-                  })
-                }
-                return { success: true }
-              },
-              async all() {
-                const nowIso = String(args[0])
-                const limit = Number(args[1])
-                const filtered = inserts
-                  // 실 SQL 과 같은 경계(WHERE expires_at >= ?) — 다르면 거짓 통과다
-                  .filter((r) => r.expires_at >= nowIso)
-                  .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-                  .slice(0, limit)
-                return { results: filtered }
-              }
-            }
+          bind() {
+            return { async run() { return { success: true } } }
           }
         }
       }
     } as unknown as D1Database
   }
-
-  return { env, objects, inserts, deleted }
+  return { env, objects }
 }
 
-async function postUpload(
-  env: Env,
-  fields: { image?: Blob; context?: string; expiresInDays?: string },
-  token?: string
-): Promise<Response> {
+function leakyContextJson(): string {
+  return JSON.stringify({
+    v: 2,
+    sourceUrl: 'https://example.com/page',
+    sourceTitle: 'Example',
+    captureType: 'visible',
+    capturedAt: '2026-07-10T00:00:00.000Z',
+    viewport: { width: 1280, height: 720 },
+    pins: [{ id: 1, memo: 'ok', x: 99, y: 88 }],
+    intent: '설명',
+    mode: 'context',
+    // 화이트리스트 밖 필드 — parseSharedContextV2 가 재구성 시 걸러내야 한다
+    userNote: 'SECRET_NOTE',
+    tags: ['SECRET_TAG'],
+    userAgent: 'SECRET_UA'
+  })
+}
+
+async function uploadCapture(env: Env, token: string): Promise<{ id: string }> {
   const form = new FormData()
-  if (fields.image) form.set('image', fields.image, 'shot.png')
-  if (fields.context !== undefined) form.set('context', fields.context)
-  if (fields.expiresInDays !== undefined) {
-    form.set('expiresInDays', fields.expiresInDays)
-  }
-  return worker.fetch(
-    new Request('https://w.test/upload', {
+  form.append('image', new Blob([PNG], { type: 'image/png' }), 'capture.png')
+  form.append('context', leakyContextJson())
+  form.append('expiresInDays', '7')
+  const res = await worker.fetch(
+    new Request('https://w.test/captures', {
       method: 'POST',
       body: form,
-      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+      headers: { Authorization: `Bearer ${token}` }
     }),
     env,
     {} as ExecutionContext
   )
+  expect(res.status).toBe(201)
+  return (await res.json()) as { id: string }
 }
 
-describe('POST /upload — D1 captures INSERT (Phase 2)', () => {
-  it('인증된 레거시 업로드는 이미지와 JSON R2 메타에 같은 owner를 기록한다', async () => {
-    const secret = 'legacy-owner-secret'
-    const token = await generateUserToken(secret, new Uint8Array(16).fill(7))
-    const expectedOwner = await ownerFromToken(token)
-    const { env, objects } = makeUploadEnv()
-    env.TOKEN_SIGNING_SECRET = secret
+describe('누출 회귀 — SharedContext 화이트리스트 미확장 (POST /captures·GET /pi)', () => {
+  it('R2 에 저장되는 {id}.json 은 화이트리스트 밖 필드(userNote·tags·pin x/y·userAgent)를 담지 않는다', async () => {
+    const { env, objects } = makeEnv()
+    const token = await generateUserToken(SIGNING_SECRET)
+    const { id } = await uploadCapture(env, token)
 
-    const response = await postUpload(
-      env,
-      {
-        image: new Blob([PNG], { type: 'image/png' }),
-        context: JSON.stringify(SHARED_CTX)
-      },
-      token
-    )
+    const jsonEntry = [...objects.entries()].find(([key]) => key.endsWith('.json'))
+    expect(jsonEntry).toBeDefined()
+    const stored = JSON.parse(
+      new TextDecoder().decode(jsonEntry![1].bytes)
+    ) as Record<string, unknown>
 
-    expect(response.status).toBe(200)
-    const { id } = (await response.json()) as { id: string }
-    expect(objects.get(id)?.customMetadata?.owner).toBe(expectedOwner)
-    expect(objects.get(`${id}.json`)?.customMetadata?.owner).toBe(expectedOwner)
+    expect(stored.pins).toEqual([{ id: 1, memo: 'ok' }])
+    expect(stored).not.toHaveProperty('userNote')
+    expect(stored).not.toHaveProperty('tags')
+    expect(stored).not.toHaveProperty('userAgent')
+    expect(JSON.stringify(stored)).not.toContain('SECRET_NOTE')
+    expect(JSON.stringify(stored)).not.toContain('SECRET_TAG')
+    expect(JSON.stringify(stored)).not.toContain('SECRET_UA')
+    expect(id).toBeTruthy()
   })
 
-  it('context 있는 성공 경로: R2 PUT 후 D1 INSERT (id=R2키, created_at=now, url/title/type/pin_count, expires_at=now+7d)', async () => {
-    const fixedNow = Date.parse('2026-07-18T12:00:00.000Z')
-    vi.spyOn(Date, 'now').mockReturnValue(fixedNow)
-    vi.spyOn(crypto, 'randomUUID').mockReturnValue('11111111-1111-4111-8111-111111111111')
+  it('GET /pi/{id} 는 이미지 바이트만 반환한다 — JSON·메타 필드 미포함', async () => {
+    const { env } = makeEnv()
+    const token = await generateUserToken(SIGNING_SECRET)
+    const { id } = await uploadCapture(env, token)
 
-    const { env, objects, inserts } = makeUploadEnv({ now: fixedNow })
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX)
+    const signedUrl = await createSignedImageUrl({
+      origin: 'https://w.test',
+      id,
+      secret: SIGNING_SECRET,
+      nowMs: Date.now()
     })
-
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { id: string; url: string }
-    expect(body.id).toBe('11111111-1111-4111-8111-111111111111')
-    expect(body.url).toBe('https://w.test/s/11111111-1111-4111-8111-111111111111')
-
-    expect(objects.has(body.id)).toBe(true)
-    expect(objects.has(`${body.id}.json`)).toBe(true)
-
-    expect(inserts).toHaveLength(1)
-    expect(inserts[0]).toEqual({
-      id: body.id,
-      created_at: new Date(fixedNow).toISOString(),
-      url: SHARED_CTX.sourceUrl,
-      title: SHARED_CTX.sourceTitle,
-      capture_type: SHARED_CTX.captureType,
-      pin_count: SHARED_CTX.pins.length,
-      expires_at: new Date(fixedNow + MAX_AGE_MS).toISOString()
-    })
-
-    vi.restoreAllMocks()
-  })
-
-  it('context 없는 업로드: 현행처럼 200 + R2 이미지만, D1 INSERT 없음', async () => {
-    const { env, objects, inserts } = makeUploadEnv()
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' })
-    })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { id: string; url: string }
-    expect(body.id).toBeTruthy()
-    expect(body.url).toContain(`/s/${body.id}`)
-    expect(objects.has(body.id)).toBe(true)
-    expect(objects.has(`${body.id}.json`)).toBe(false)
-    expect(inserts).toHaveLength(0)
-  })
-
-  it('R2 PUT 성공 후 D1 INSERT 실패: R2 정리 시도 + 명시적 5xx (조용한 무시 금지)', async () => {
-    vi.spyOn(crypto, 'randomUUID').mockReturnValue('22222222-2222-4222-8222-222222222222')
-    const { env, objects, deleted } = makeUploadEnv({ d1Fail: true })
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX)
-    })
-
-    expect(res.status).toBeGreaterThanOrEqual(500)
-    expect(res.status).toBeLessThan(600)
-    const text = await res.text()
-    expect(text.length).toBeGreaterThan(0)
-    expect(deleted).toEqual(
-      expect.arrayContaining([
-        '22222222-2222-4222-8222-222222222222',
-        '22222222-2222-4222-8222-222222222222.json'
-      ])
-    )
-    expect(objects.size).toBe(0)
-    vi.restoreAllMocks()
-  })
-
-  it('D1 실패 후 R2 cleanup 자체 실패해도 명시적 500 유지 (가짜 성공 금지)', async () => {
-    vi.spyOn(crypto, 'randomUUID').mockReturnValue('44444444-4444-4444-8444-444444444444')
-    const { env, objects } = makeUploadEnv({ d1Fail: true, cleanupFail: true })
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX)
-    })
-
-    expect(res.status).toBe(500)
-    const text = await res.text()
-    expect(text.length).toBeGreaterThan(0)
-    // cleanup 실패 → orphan 잔존 가능. 응답은 여전히 500 (allSettled best-effort)
-    expect(objects.size).toBeGreaterThan(0)
-    vi.restoreAllMocks()
-  })
-
-  it('context 존재 + JSON 파싱 실패: D1 스킵·200 유지 + console.warn 관측', async () => {
-    vi.spyOn(crypto, 'randomUUID').mockReturnValue('55555555-5555-4555-8555-555555555555')
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const { env, objects, inserts } = makeUploadEnv()
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: '{not-valid-json'
-    })
-
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { id: string; url: string }
-    expect(body.id).toBe('55555555-5555-4555-8555-555555555555')
-    expect(objects.has(body.id)).toBe(true)
-    expect(objects.has(`${body.id}.json`)).toBe(true)
-    expect(inserts).toHaveLength(0)
-    expect(warn).toHaveBeenCalledWith(
-      '[upload] context present but JSON parse failed; D1 index skipped'
-    )
-    warn.mockRestore()
-    vi.restoreAllMocks()
-  })
-})
-
-describe('POST /upload — expiresInDays 파라미터 (0.4.0 P3)', () => {
-  it("expiresInDays='30': R2 이미지·{id}.json·D1 이 같은 만료 문자열 (3자 일치)", async () => {
-    const fixedNow = Date.parse('2026-07-22T09:00:00.000Z')
-    vi.spyOn(Date, 'now').mockReturnValue(fixedNow)
-    vi.spyOn(crypto, 'randomUUID').mockReturnValue('66666666-6666-4666-8666-666666666666')
-
-    const { env, objects, inserts } = makeUploadEnv({ now: fixedNow })
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX),
-      expiresInDays: '30'
-    })
-
-    expect(res.status).toBe(200)
-    const { id } = (await res.json()) as { id: string }
-    const expected = new Date(fixedNow + 30 * DAY_MS).toISOString()
-
-    expect(objects.get(id)?.customMetadata?.expiresAt).toBe(expected)
-    expect(objects.get(`${id}.json`)?.customMetadata?.expiresAt).toBe(expected)
-    expect(inserts[0]?.expires_at).toBe(expected)
-
-    vi.restoreAllMocks()
-  })
-
-  it("expiresInDays='1': 1일치 메타가 이미지·json 양쪽에 심긴다", async () => {
-    const fixedNow = Date.parse('2026-07-22T09:00:00.000Z')
-    vi.spyOn(Date, 'now').mockReturnValue(fixedNow)
-    const { env, objects, inserts } = makeUploadEnv({ now: fixedNow })
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX),
-      expiresInDays: '1'
-    })
-    expect(res.status).toBe(200)
-    const { id } = (await res.json()) as { id: string }
-    const expected = new Date(fixedNow + DAY_MS).toISOString()
-    expect(objects.get(id)?.customMetadata?.expiresAt).toBe(expected)
-    expect(objects.get(`${id}.json`)?.customMetadata?.expiresAt).toBe(expected)
-    expect(inserts[0]?.expires_at).toBe(expected)
-    vi.restoreAllMocks()
-  })
-
-  it('미지정 업로드: 기본 7일 메타가 심긴다 (D1 앵커와 동일 값)', async () => {
-    const fixedNow = Date.parse('2026-07-22T09:00:00.000Z')
-    vi.spyOn(Date, 'now').mockReturnValue(fixedNow)
-    const { env, objects, inserts } = makeUploadEnv({ now: fixedNow })
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX)
-    })
-    expect(res.status).toBe(200)
-    const { id } = (await res.json()) as { id: string }
-    const expected = new Date(fixedNow + MAX_AGE_MS).toISOString()
-    expect(objects.get(id)?.customMetadata?.expiresAt).toBe(expected)
-    expect(objects.get(`${id}.json`)?.customMetadata?.expiresAt).toBe(expected)
-    expect(inserts[0]?.expires_at).toBe(expected)
-    vi.restoreAllMocks()
-  })
-
-  it("allowlist 위반('3'): 400 + R2 put 0건 + D1 insert 0건 (부작용 없음)", async () => {
-    const { env, objects, inserts } = makeUploadEnv()
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX),
-      expiresInDays: '3'
-    })
-    expect(res.status).toBe(400)
-    expect(await res.text()).toContain('1, 7, 30')
-    expect(objects.size).toBe(0)
-    expect(inserts).toHaveLength(0)
-  })
-
-  it('빈 문자열: 400 (부재=7 로 조용히 흡수하지 않는다)', async () => {
-    const { env, objects, inserts } = makeUploadEnv()
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX),
-      expiresInDays: ''
-    })
-    expect(res.status).toBe(400)
-    expect(objects.size).toBe(0)
-    expect(inserts).toHaveLength(0)
-  })
-
-  it("Number() 우회값('0x7')도 400", async () => {
-    const { env, objects } = makeUploadEnv()
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX),
-      expiresInDays: '0x7'
-    })
-    expect(res.status).toBe(400)
-    expect(objects.size).toBe(0)
-  })
-
-})
-
-describe('POST /upload → snap_history 통합 (로컬 D1 mock)', () => {
-  it('업로드 후 listCaptures 에 동일 행이 최신순으로 보임', async () => {
-    const fixedNow = Date.parse('2026-07-18T15:00:00.000Z')
-    vi.spyOn(Date, 'now').mockReturnValue(fixedNow)
-    vi.spyOn(crypto, 'randomUUID').mockReturnValue('33333333-3333-4333-8333-333333333333')
-
-    const { env, inserts } = makeUploadEnv({ now: fixedNow })
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX)
-    })
-    expect(res.status).toBe(200)
-
-    const history = await listCaptures(env.DB, {
-      nowIso: new Date(fixedNow).toISOString(),
-      limit: 10
-    })
-    expect(history).toHaveLength(1)
-    expect(history[0]).toEqual({
-      id: '33333333-3333-4333-8333-333333333333',
-      createdAt: new Date(fixedNow).toISOString(),
-      url: SHARED_CTX.sourceUrl,
-      title: SHARED_CTX.sourceTitle,
-      captureType: SHARED_CTX.captureType,
-      pinCount: 2
-    })
-    expect(inserts[0]?.id).toBe(history[0]?.id)
-
-    vi.restoreAllMocks()
-  })
-})
-
-describe('누출 회귀 — SharedContext 화이트리스트 미확장 + /s·/i 신규 필드 미노출', () => {
-  it('/s 뷰어는 화이트리스트 밖 필드(userNote·tags·pin x/y·userAgent)를 HTML에 노출하지 않음', async () => {
-    const leaky = {
-      ...SHARED_CTX,
-      userNote: 'SECRET_NOTE',
-      tags: ['SECRET_TAG'],
-      userAgent: 'SECRET_UA',
-      pins: [{ id: 1, memo: 'ok', x: 99, y: 88 }]
-    }
-    const { env } = makeUploadEnv()
-    const up = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(leaky)
-    })
-    expect(up.status).toBe(200)
-    const { id } = (await up.json()) as { id: string }
-
-    const view = await worker.fetch(
-      new Request(`https://w.test/s/${id}`),
+    const res = await worker.fetch(
+      new Request(signedUrl),
       env,
       {} as ExecutionContext
     )
-    expect(view.status).toBe(200)
-    const html = await view.text()
-    expect(html).toContain(SHARED_CTX.sourceTitle)
-    expect(html).toContain('ok')
-    expect(html).not.toContain('SECRET_NOTE')
-    expect(html).not.toContain('SECRET_TAG')
-    expect(html).not.toContain('SECRET_UA')
-    expect(html).not.toContain('x: 99')
-    expect(html).not.toMatch(/\bx\b[^<]*99/)
-  })
-
-  it('/i 는 이미지 바이트만 — JSON·메타 필드 미포함 (기존 공유 응답 회귀)', async () => {
-    const { env } = makeUploadEnv()
-    const up = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify({ ...SHARED_CTX, userNote: 'SECRET_NOTE' })
-    })
-    const { id } = (await up.json()) as { id: string }
-
-    const img = await worker.fetch(
-      new Request(`https://w.test/i/${id}`),
-      env,
-      {} as ExecutionContext
-    )
-    expect(img.status).toBe(200)
-    expect(img.headers.get('content-type')).toBe('image/png')
-    const buf = new Uint8Array(await img.arrayBuffer())
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/png')
+    const buf = new Uint8Array(await res.arrayBuffer())
     expect(Array.from(buf)).toEqual(Array.from(PNG))
     const asText = new TextDecoder().decode(buf)
     expect(asText).not.toContain('SECRET_NOTE')
     expect(asText).not.toContain('sourceUrl')
-  })
-
-  it('업로드 성공 응답 형태 회귀: { id, url } 만 (추가 필드 없음)', async () => {
-    const { env } = makeUploadEnv()
-    const res = await postUpload(env, {
-      image: new Blob([PNG], { type: 'image/png' }),
-      context: JSON.stringify(SHARED_CTX)
-    })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as Record<string, unknown>
-    expect(Object.keys(body).sort()).toEqual(['id', 'url'])
   })
 })
