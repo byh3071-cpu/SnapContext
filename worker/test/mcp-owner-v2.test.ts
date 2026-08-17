@@ -64,23 +64,6 @@ function makeBucket(objects: Map<string, Stored>): R2Bucket {
   } as unknown as R2Bucket
 }
 
-function makeDb(owner: string | null, shouldFail = false): D1Database {
-  return {
-    prepare() {
-      return {
-        bind() {
-          return {
-            async first() {
-              if (shouldFail) throw new Error('D1 unavailable')
-              return { owner }
-            }
-          }
-        }
-      }
-    }
-  } as unknown as D1Database
-}
-
 async function privateObjects(owner: string | null): Promise<Map<string, Stored>> {
   const keys = await derivePrivateObjectKeys(ID, SECRET)
   const metadata: Record<string, string> = {
@@ -110,7 +93,6 @@ function options(
     includeImage: true,
     now: NOW,
     signingSecret: SECRET,
-    db: makeDb(OWNER_A),
     auth: { scope: 'user', owner: OWNER_A },
     ...overrides
   }
@@ -139,19 +121,13 @@ describe('MCP owner 격리', () => {
 
   it('교차 owner·owner 없음·미존재가 정확히 같은 NOT_FOUND다', async () => {
     const cross = await errorMessage(
-      getSnapPack(
-        makeBucket(await privateObjects(OWNER_B)),
-        options({ db: makeDb(OWNER_B) })
-      )
+      getSnapPack(makeBucket(await privateObjects(OWNER_B)), options())
     )
     const anonymous = await errorMessage(
-      getSnapPack(
-        makeBucket(await privateObjects(null)),
-        options({ db: makeDb(null) })
-      )
+      getSnapPack(makeBucket(await privateObjects(null)), options())
     )
     const missing = await errorMessage(
-      getSnapPack(makeBucket(new Map()), options({ db: makeDb(null) }))
+      getSnapPack(makeBucket(new Map()), options())
     )
 
     expect(cross).toBe('NOT_FOUND')
@@ -168,7 +144,9 @@ describe('MCP owner 격리', () => {
     expect(pack.id).toBe(ID)
   })
 
-  it('레거시 R2 owner 메타가 없으면 D1 fallback을 쓰고 D1 장애는 fail-closed다', async () => {
+  it('레거시 raw-ID 객체는 0.4.4부터 NOT_FOUND다 (fallback 제거 — ADR-015 2차)', async () => {
+    // private-v2 파생 키가 아닌 raw ID 로 저장된 객체 — 0.4.2 시절엔 readLegacyOwner
+    // 로 D1 owner 를 되찾아 읽어줬지만, 그 fallback 자체가 삭제됐다.
     const legacy = new Map<string, Stored>([
       [ID, { uploaded: new Date(NOW), customMetadata: { expiresAt: EXPIRES } }],
       [
@@ -190,10 +168,7 @@ describe('MCP owner 격리', () => {
     ])
 
     await expect(
-      getSnapPack(makeBucket(legacy), options({ db: makeDb(OWNER_A) }))
-    ).resolves.toMatchObject({ sourceTitle: '레거시' })
-    await expect(
-      getSnapPack(makeBucket(legacy), options({ db: makeDb(OWNER_A, true) }))
+      getSnapPack(makeBucket(legacy), options())
     ).rejects.toMatchObject({ message: 'NOT_FOUND' })
   })
 })

@@ -108,7 +108,6 @@ export interface SnapAnalyzeOptions {
   now: number
   mode?: string
   signingSecret?: string
-  db?: D1Database
   auth?: McpAuthResult
 }
 
@@ -123,7 +122,6 @@ export async function snapAnalyze(
     includeImage: true,
     now: opts.now,
     signingSecret: opts.signingSecret,
-    db: opts.db,
     auth: opts.auth
   })
   return buildAnalyzeDigest(pack, assertAnalyzeMode(opts.mode, pack.mode))

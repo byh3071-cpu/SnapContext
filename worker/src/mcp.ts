@@ -109,7 +109,6 @@ export function createSnapMcpServer(
           includeImage: includeImage === true,
           now: Date.now(),
           signingSecret: env.TOKEN_SIGNING_SECRET,
-          db: env.DB,
           auth
         })
         return {
@@ -151,7 +150,6 @@ export function createSnapMcpServer(
           now: Date.now(),
           mode,
           signingSecret: env.TOKEN_SIGNING_SECRET,
-          db: env.DB,
           auth
         })
         return {

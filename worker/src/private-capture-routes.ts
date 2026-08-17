@@ -302,13 +302,11 @@ async function handlePrivateImage(
   }
 
   const keys = await derivePrivateObjectKeys(id, secret)
+  // 0.4.4(ADR-015 2차): 레거시 raw-ID(env.BUCKET.get(id)) 호환 fallback 제거 —
+  // private-v2 키만 조회한다.
   let object: R2ObjectBody | null
   try {
     object = await env.BUCKET.get(keys.imageKey)
-    if (object === null) {
-      // 레거시 owner 캡처도 새 MCP 응답의 /pi URL로 읽을 수 있게 하는 호환 경로.
-      object = await env.BUCKET.get(id)
-    }
   } catch {
     return textResponse('이미지를 불러오지 못했습니다.', 502, {
       'Cache-Control': 'no-store'

@@ -2,7 +2,7 @@ export const DAY_MS = 24 * 60 * 60 * 1000
 export const EXPIRY_DAYS_ALLOWLIST = [1, 7, 30] as const
 export type ExpiryDays = (typeof EXPIRY_DAYS_ALLOWLIST)[number]
 export const DEFAULT_EXPIRY_DAYS: ExpiryDays = 7
-/** 레거시 fallback 창(메타 없는 기존 객체) + 기본 보관창. 이름은 하위호환 유지 */
+/** 기본 보관창(7일, ms). 이름은 하위호환 유지 — 레거시 fallback 은 0.4.4에서 제거됨 */
 export const MAX_AGE_MS = DEFAULT_EXPIRY_DAYS * DAY_MS
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 export const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
@@ -16,7 +16,7 @@ export interface ExpiryMetaSource {
 export interface ExpiryInfo {
   readonly expiresAtMs: number
   readonly retentionDays: number
-  readonly source: 'metadata' | 'legacy' | 'invalid'
+  readonly source: 'metadata' | 'invalid'
 }
 
 export type SharedContext = {
@@ -46,18 +46,20 @@ export function isPngMagic(bytes: Uint8Array): boolean {
 }
 
 /**
- * 만료 판정·표시의 단일 소스. customMetadata.expiresAt(절대시각) 이 SoT 이고,
- * 없으면 레거시 객체로 보고 uploaded + 7일로 되돌린다.
+ * 만료 판정·표시의 단일 소스. customMetadata.expiresAt(절대시각) 이 SoT 다.
+ *
+ * 0.4.4(ADR-015 2차)부터 신규 쓰기 경로(/captures)는 항상 expiresAt 을 심으므로,
+ * 메타가 없는 객체를 "레거시라 7일 연장" 하던 예전 fallback 은 삭제됐다 — 이제는
+ * 조용한 우회 대신 즉시 만료(invalid) 로 처리한다.
  */
 export function readExpiry(obj: ExpiryMetaSource): ExpiryInfo {
   const uploadedMs = obj.uploaded.getTime()
   const raw = obj.customMetadata?.expiresAt
   if (raw === undefined) {
-    return {
-      expiresAtMs: uploadedMs + MAX_AGE_MS,
-      retentionDays: DEFAULT_EXPIRY_DAYS,
-      source: 'legacy'
-    }
+    console.warn(
+      '[expiry] customMetadata.expiresAt 없음 — 만료 처리 (레거시 fallback 제거됨, ADR-015 2차)'
+    )
+    return { expiresAtMs: uploadedMs, retentionDays: 0, source: 'invalid' }
   }
   const parsed = Date.parse(raw)
   if (!Number.isFinite(parsed)) {

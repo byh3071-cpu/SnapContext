@@ -43,7 +43,6 @@ export interface GetSnapPackOptions {
   includeImage: boolean
   now: number
   signingSecret?: string
-  db?: D1Database
   auth?: McpAuthResult
 }
 
@@ -57,49 +56,34 @@ function notFound(): SnapPackError {
   return new SnapPackError('NOT_FOUND', 'NOT_FOUND')
 }
 
+/**
+ * 0.4.4(ADR-015 2차): 레거시 raw-ID(bucket.head(id)) fallback 을 제거했다 — private-v2
+ * 키로만 찾는다. signingSecret 미설정(서버 설정 오류)이면 애초에 아무 것도 못 찾는다
+ * (fail-closed. 조용히 레거시 경로로 넘기지 않는다).
+ */
 async function resolveCaptureObjects(
   bucket: R2Bucket,
   id: string,
   signingSecret: string | undefined
 ): Promise<CaptureObjects> {
+  if (signingSecret === undefined || signingSecret.length === 0) {
+    throw notFound()
+  }
   try {
-    if (signingSecret !== undefined && signingSecret.length > 0) {
-      const keys = await derivePrivateObjectKeys(id, signingSecret)
-      const privateHead = await bucket.head(keys.imageKey)
-      if (privateHead) {
-        return {
-          imageHead: privateHead,
-          jsonKey: keys.jsonKey,
-          isPrivateV2: true
-        }
-      }
-    }
-
-    const legacyHead = await bucket.head(id)
-    if (!legacyHead) throw notFound()
-    return {
-      imageHead: legacyHead,
-      jsonKey: `${id}.json`,
-      isPrivateV2: false
-    }
+    const keys = await derivePrivateObjectKeys(id, signingSecret)
+    const imageHead = await bucket.head(keys.imageKey)
+    if (!imageHead) throw notFound()
+    return { imageHead, jsonKey: keys.jsonKey, isPrivateV2: true }
   } catch (error) {
     if (error instanceof SnapPackError) throw error
     throw notFound()
   }
 }
 
-async function readLegacyOwner(db: D1Database, id: string): Promise<string | null> {
-  try {
-    const row = await db
-      .prepare('SELECT owner FROM captures WHERE id = ? LIMIT 1')
-      .bind(id)
-      .first<{ owner: string | null }>()
-    return typeof row?.owner === 'string' ? row.owner : null
-  } catch {
-    throw notFound()
-  }
-}
-
+/**
+ * owner 는 항상 customMetadata 에서 온다 — /captures 쓰기 경로(private-capture-routes.ts)가
+ * 매 캡처에 owner 를 심는다. D1 조회로 되돌아가던 레거시 owner fallback 은 0.4.4에서 제거됐다.
+ */
 async function assertOwner(
   objects: CaptureObjects,
   opts: GetSnapPackOptions
@@ -108,13 +92,7 @@ async function assertOwner(
   if (auth.scope === 'admin') return
 
   const metadataOwner = objects.imageHead.customMetadata?.owner
-  const owner =
-    typeof metadataOwner === 'string'
-      ? metadataOwner
-      : opts.db
-        ? await readLegacyOwner(opts.db, opts.id)
-        : null
-  if (owner !== auth.owner) throw notFound()
+  if (metadataOwner !== auth.owner) throw notFound()
 }
 
 function parseContext(

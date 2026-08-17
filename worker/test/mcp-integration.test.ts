@@ -12,6 +12,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { DAY_MS, MAX_AGE_MS } from '../src/lib'
 import { createSnapMcpServer } from '../src/mcp'
+import { derivePrivateObjectKeys } from '../src/private-object-key'
 import type { Env } from '../src/env'
 
 vi.mock('agents/mcp', () => ({
@@ -37,11 +38,42 @@ const ctxJson = JSON.stringify({
   viewport: { width: 1, height: 2 },
   pins: []
 })
+// getSnapPack 은 0.4.4부터 private-v2 스키마(intent·mode 필수)만 파싱한다 —
+// 실제 컨텍스트 내용까지 성공적으로 읽어야 하는 테스트는 이 버전을 쓴다.
+const v2CtxJson = JSON.stringify({
+  v: 2,
+  sourceUrl: 'https://a.com',
+  sourceTitle: 'PackTitle',
+  captureType: 'visible',
+  capturedAt: '2026-07-10T00:00:00.000Z',
+  viewport: { width: 1, height: 2 },
+  pins: [],
+  intent: '테스트 의도',
+  mode: 'context'
+})
 
 type Stored = {
   text?: string
   uploaded: Date
   customMetadata?: Record<string, string>
+}
+
+/**
+ * 0.4.4(ADR-015 2차)부터 snap_pack·snap_analyze 는 레거시 raw-ID fallback 없이
+ * private-v2 파생 키로만 캡처를 찾는다 — 컨텍스트까지 성공적으로 읽어야 하는
+ * 테스트는 실제 파생 키 위치에 저장해야 한다.
+ */
+async function privateCaptureEntries(
+  id: string,
+  opts: { uploaded?: Date; text?: string } = {}
+): Promise<Array<[string, Stored]>> {
+  const uploaded = opts.uploaded ?? new Date()
+  const meta = { expiresAt: new Date(uploaded.getTime() + MAX_AGE_MS).toISOString() }
+  const keys = await derivePrivateObjectKeys(id, TOKEN)
+  return [
+    [keys.imageKey, { uploaded, customMetadata: meta }],
+    [keys.jsonKey, { text: opts.text ?? v2CtxJson, uploaded, customMetadata: meta }]
+  ]
 }
 
 function makeEnv(objects: Map<string, Stored>, historyRows: unknown[] = []): Env {
@@ -124,10 +156,7 @@ describe('handleMcpRequest 통합 (MAJOR-4 fallback)', () => {
 
   it('initialize → tools/list → snap_history / snap_pack 정상 경로', async () => {
     const env = makeEnv(
-      new Map([
-        ['p1.json', { text: ctxJson, uploaded: new Date() }],
-        ['p1', { uploaded: new Date() }]
-      ]),
+      new Map(await privateCaptureEntries('p1')),
       [
         {
           id: 'p1',
@@ -285,12 +314,7 @@ describe('handleMcpRequest 통합 (MAJOR-4 fallback)', () => {
   })
 
   it('tools/call snap_analyze — 유효 id + mode', async () => {
-    const env = makeEnv(
-      new Map([
-        ['p1.json', { text: ctxJson, uploaded: new Date() }],
-        ['p1', { uploaded: new Date() }]
-      ])
-    )
+    const env = makeEnv(new Map(await privateCaptureEntries('p1')))
     const init = await mcpCall(env, {
       jsonrpc: '2.0',
       id: 1,
@@ -461,13 +485,14 @@ describe('snap_pack tool isError (직접 서버)', () => {
   it('메타 1일 이미지는 uploaded 가 신선해도 T+2d 에 EXPIRED (mock customMetadata 통과 확인)', async () => {
     const uploadedAt = Date.now()
     const meta = { expiresAt: new Date(uploadedAt + DAY_MS).toISOString() }
+    const keys = await derivePrivateObjectKeys('short', TOKEN)
     const env = makeEnv(
       new Map([
         [
-          'short.json',
+          keys.jsonKey,
           { text: ctxJson, uploaded: new Date(uploadedAt), customMetadata: meta }
         ],
-        ['short', { uploaded: new Date(uploadedAt), customMetadata: meta }]
+        [keys.imageKey, { uploaded: new Date(uploadedAt), customMetadata: meta }]
       ])
     )
     const { getSnapPack } = await import('../src/pack')
@@ -476,17 +501,20 @@ describe('snap_pack tool isError (직접 서버)', () => {
         id: 'short',
         origin: 'https://w.test',
         includeImage: false,
-        now: uploadedAt + 2 * DAY_MS
+        now: uploadedAt + 2 * DAY_MS,
+        signingSecret: TOKEN
       })
     ).rejects.toMatchObject({ name: 'SnapPackError', code: 'EXPIRED' })
   })
 
   it('만료 이미지는 EXPIRED (MAX_AGE 초과)', async () => {
     const stale = new Date(Date.now() - MAX_AGE_MS - 1000)
+    const meta = { expiresAt: new Date(stale.getTime() + DAY_MS).toISOString() }
+    const keys = await derivePrivateObjectKeys('old', TOKEN)
     const env = makeEnv(
       new Map([
-        ['old.json', { text: ctxJson, uploaded: stale }],
-        ['old', { uploaded: stale }]
+        [keys.jsonKey, { text: ctxJson, uploaded: stale, customMetadata: meta }],
+        [keys.imageKey, { uploaded: stale, customMetadata: meta }]
       ])
     )
     const { getSnapPack, SnapPackError } = await import('../src/pack')
@@ -495,7 +523,8 @@ describe('snap_pack tool isError (직접 서버)', () => {
         id: 'old',
         origin: 'https://w.test',
         includeImage: false,
-        now: Date.now()
+        now: Date.now(),
+        signingSecret: TOKEN
       })
     ).rejects.toMatchObject({ name: 'SnapPackError', code: 'EXPIRED' })
     expect(SnapPackError).toBeTruthy()
