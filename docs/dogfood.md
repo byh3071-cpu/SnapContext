@@ -69,4 +69,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/register-mcp.ps1 -Lo
 
 일상 10분 검증 통과는 릴리즈 승인이 아니다. 릴리즈 전에는 분리된 승인 환경에서 Claude Code·Cursor·Codex 각각에 대해 pixel-only marker 판독, `snap_history` → `snap_analyze`, 즉시 삭제 → `NOT_FOUND`의 전체 절차를 수행해야 한다.
 
+확장(ext) 릴리즈에는 추가로 `pnpm dogfood:qa043`(가리기 파괴성·주석 UI의 유일한 실브라우저 검증, 33체크)을 실행해 전체 OK여야 한다 — `dogfood:verify`와 동시 실행 금지(리소스 경합), 순차로.
+
 세 클라이언트 결과가 모두 PASS이고 기존 test·tsc·build·E2E 게이트가 통과한 경우에만 릴리즈 게이트를 통과한 것으로 판정한다. staging 생성, production 배포, 시크릿 변경, store 제출, tag·merge는 이 문서의 로컬 dogfood 범위가 아니며 각각 사람 승인이 필요하다.

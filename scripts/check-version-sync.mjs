@@ -40,4 +40,12 @@ if (mismatches.length > 0) {
 	process.exit(1)
 }
 
-console.log(`[version-sync] OK: ${expected} (4값 일치)`)
+// 5번째 검사(감사 H2): 스크린샷 생성기에 버전 하드코딩이 되살아나지 않았는지.
+// 생성기는 package.json을 읽어 조판하므로(V${PKG_VERSION}), V0.x 리터럴이 보이면 회귀다.
+const screenshotSrc = readFileSync("scripts/generate-store-screenshots.mjs", "utf8")
+if (/V\d+\.\d+\.\d+/.test(screenshotSrc)) {
+	console.error("[version-sync] x generate-store-screenshots.mjs 에 버전 하드코딩(V0.x) 재유입 — PKG_VERSION 참조로 되돌리세요.")
+	process.exit(1)
+}
+
+console.log(`[version-sync] OK: ${expected} (4값 일치 + 스크린샷 생성기 하드코딩 0)`)

@@ -65,4 +65,15 @@ id만 알면 열리던 문 3개(`/s` 뷰어·무서명 `/i`·레거시 `/upload`
 3. 신규 계약(410·no-store·OPTIONS) 테스트로 고정.
 4. 로컬 스모크: `pnpm dogfood:up` → 레거시 3경로 410 실측 + `dogfood:verify`(17) green.
 5. 적대 검증(critic) blocker 0.
-6. 사람 게이트: D2 잔존 실측 기록 → `wrangler deploy` → 라이브 스모크 체크리스트 → tag `v0.4.4`.
+6. 사람 게이트: D2 잔존 실측 기록 + **R2 lifecycle 규칙이 `private-v2/` prefix를 덮는지 확인**(`wrangler r2 bucket lifecycle list` — 감사 M4, 같은 타이밍 1분) → `wrangler deploy` → 라이브 스모크 체크리스트 → tag `v0.4.4`.
+
+## 편승 항목 (감사 핸드오프, 요한 승인 2026-08-17 — M1은 0.4.5로 이월)
+
+| # | 항목 | 처리 |
+|---|---|---|
+| H2 | 스크린샷 생성기 masthead 버전 하드코딩 | ✅ package.json SoT 참조로 교체 + check-version-sync 5번째 검사(하드코딩 재유입 차단) |
+| H3 | qa-043 게이트 편입 | ✅ `pnpm dogfood:qa043` 등록 + dogfood.md 릴리즈 게이트 명시 |
+| M4 | R2 lifecycle prefix 확인 | 사람 게이트에 편입(위) |
+| M5 | wrangler observability 활성화 | worker 구현 완료 후 적용(충돌 회피) |
+| L11 | deploy lockfile 고정(`npm ci &&`) | worker 구현 완료 후 적용(충돌 회피) |
+| L3 | changelog 누락 기재 | ✅ 0.4.4 절에 벤더 아이콘·토큰 행 수정 편입 기재 |

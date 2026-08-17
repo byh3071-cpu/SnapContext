@@ -14,6 +14,10 @@ import { tmpdir } from 'os'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = resolve(__dirname, '..')
 const EXTENSION_PATH = resolve(PROJECT_ROOT, 'dist')
+// masthead 버전은 package.json이 SoT — 하드코딩 금지(감사 H2: 구버전 리터럴 스테일 실측)
+const PKG_VERSION = JSON.parse(
+  readFileSync(resolve(PROJECT_ROOT, 'package.json'), 'utf8')
+).version
 const OUTPUT_DIR = resolve(
   PROJECT_ROOT,
   'docs',
@@ -451,7 +455,7 @@ function buildStoreHtml(scene, panelDataUrl) {
           <header class="masthead">
             <span class="brand-block">${brandSvg(26)}</span>
             <span class="brand-name">SnapContext</span>
-            <span class="mast-meta">CHROME · WHALE MV3 · <b>V0.4.0</b></span>
+            <span class="mast-meta">CHROME · WHALE MV3 · <b>V${PKG_VERSION}</b></span>
           </header>
           <div class="body">
             <section class="copy">

@@ -6,6 +6,11 @@ tags: [changelog]
 
 # Changelog
 
+## 0.4.4 — 진행 중 (worker-only)
+
+- (예정) 레거시 공개 경로 3종(`/s`·무서명 `/i`·`POST /upload`) 제거 — 410 Gone·no-store. PRD-0.4.4.
+- v0.4.3 태그 이후 확장 커밋 편입 기재(감사 L3): AI 도구 선택 드롭다운에 벤더 아이콘 추가(f73dee6) — Codex·Cursor는 공식 로고(simple-icons 원형), Claude Code는 자체 제작 아이콘(상표 정책 조사 docs/research/vendor-logo-policy.md), WAI-ARIA listbox 접근성. 토큰 행 레이아웃 수정(b8cf7f2)도 v0.4.3 태그 밖.
+
 ## 0.4.3 — 구현 완료 · 수동 QA·tag 대기 (ext-only)
 
 - 주석 도구 4종을 추가했다: 가리기(불투명 솔리드 박스 — 픽셀 파괴 bake, ADR-021)·화살표·형광펜·자유선. 편집 중에는 벡터로 유지(undo 가능)하고 내보내기(다운로드·복사·`내 AI에 저장`) 시점에 단일 파이프라인으로 bake한다.
