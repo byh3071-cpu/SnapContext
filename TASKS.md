@@ -2,14 +2,13 @@
 
 ## Active
 
-- [ ] **P0 — 0.4.2 릴리즈 실행 (전부 사람 게이트) — 스토어 제출 제외**
-  - **릴리즈 게이트 3클라이언트 전 절차 PASS 완료** — Codex·Claude Code·Cursor 모두 블라인드 marker 판독 일치·삭제 NOT_FOUND·(Codex) 300s 만료 후 재호출 복구. query log 실측 완료(sig= 노출되나 capture id CF REDACTED → 재구성 불가, 위험 낮음). 상세: tests/e2e/dogfood/logs/2026-08-15-release-smoke-staging.md(로컬).
-  - 남은 것: production 배포(`wrangler deploy`) → PRIVACY 공개 → tag `v0.4.2`.
-  - 선택(권장): staging TOKEN_SIGNING_SECRET 회전(smoke 토큰 일괄 무효화).
+- [x] **P0 — 0.4.2 릴리즈 실행** — 2026-08-17 0.4.4 배포로 잔여 소화(production 배포 겸행·PRIVACY 410 현행화 공개 완료). v0.4.2 단독 태그는 생략(v0.4.3 태그 존재로 무의미).
+  - 선택(권장) 잔존: staging TOKEN_SIGNING_SECRET 회전(smoke 토큰 일괄 무효화).
 
-- [ ] **P0 — 0.4.4 배포 실행 (전부 사람 게이트 — 코드·검증 완료)**
-  - 구현·적대검증 통과(2026-08-17, worker 201 green·뮤테이션 그물 사멸 실측·로컬 스모크 410+verify 18/18). 상세: docs/log/2026-08-17-0.4.4-legacy-removal.md.
-  - 남은 것: R2·D1 잔존 실측(3분기 판정)+lifecycle 확인 → `pnpm run deploy`(worker) → 스모크 7항목 → tag `v0.4.4`. 절차: docs/runbook-0.4.4.md.
+- [ ] **P0 — 0.4.4 배포 완료·마감 3건 잔여 (2026-08-17 배포 실행됨)**
+  - 구현·적대검증 통과(worker 201 green·뮤테이션 그물·로컬 스모크). 상세: docs/log/2026-08-17-0.4.4-legacy-removal.md.
+  - **배포 완료**: 잔존 실측(R2 레거시 키 0·lifecycle 전prefix 30일·D1 레거시 1행=E2E 테스트 잔재) → `pnpm run deploy` 성공(Version `2feb2238`) → 스모크 1·5·6·7 PASS, 3 부분 PASS. 실행 기록: docs/runbook-0.4.4.md §6.
+  - 남은 것(요한 3건): ① D1 레거시 1행 DELETE(런북 §6 명령) ② 확장 캡처 1건→스모크 2·3·4 ③ tag `v0.4.4`.
 
 - [ ] **P1 — 스토어 재심사 제출: 0.4.6 랜딩 후 마지막에 1회 (로드맵 재편 2026-08-17)**
   - 0.4.2~0.4.6(UX 다듬기 포함)을 제출 없이 개발 진행 → 완성본으로 재심사 #1 제출(0.4.2·0.4.3·0.4.6 편승).
