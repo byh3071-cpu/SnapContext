@@ -21,6 +21,15 @@ npx wrangler r2 bucket lifecycle list snapcontext-uploads
 
 ※ `r2 object list` 미지원 버전이면 Cloudflare 대시보드 R2 버킷 화면에서 육안 확인.
 
+```powershell
+# ③ D1 레거시 행 실측 (critic 중간4 — R2만 세면 유령 행을 놓침)
+#    0.4.2 배포(2026-08-05) 이전 행 = 레거시. snap_history엔 뜨는데 열 수 없는 "유령 행"이 되고,
+#    익명(owner NULL) 행은 사용자가 지울 수도 없다.
+npx wrangler d1 execute snapcontext-captures --remote --command "SELECT count(*) FROM captures WHERE created_at < '2026-08-05'"
+# 0이 아니면 같은 조건으로 정리:
+npx wrangler d1 execute snapcontext-captures --remote --command "DELETE FROM captures WHERE created_at < '2026-08-05'"
+```
+
 | ①의 결과 | 판정 |
 |---|---|
 | 레거시 객체 **0개** | 그대로 2번(일괄 배포) 진행. H1(삭제가 R2 안 지우던 결함)은 대상이 없어 소멸 |
@@ -42,7 +51,7 @@ npm run deploy   # npm ci && wrangler deploy (lockfile 고정 — 감사 L11)
 |---|---|---|
 | 1 | `GET /s/aaaa` · `GET /i/aaaa` · `POST /upload` · `OPTIONS /upload` | 전부 **410** + `Cache-Control: no-store` |
 | 2 | 확장에서 캡처 → `내 AI에 저장` | 정상 저장(201) |
-| 3 | 서버 저장 목록·삭제 | 목록 표시·삭제 후 사라짐 |
+| 3 | 서버 저장 목록·삭제 | 목록 표시·삭제 후 사라짐 + **유령 행 0**(목록에 뜨는데 snap_pack이 NOT_FOUND인 행 없음 — D1 정리 ③의 사후 확인) |
 | 4 | MCP: `snap_history` → `snap_analyze`(이미지 포함) | 정상 + `/pi` 서명 URL로 이미지 열림 |
 | 5 | `/pi` URL의 `sig` 한 글자 변조 / 5분 경과 후 재사용 | 각각 거부(403) |
 | 6 | serverInfo 버전 | **0.4.4** |
@@ -59,6 +68,7 @@ npm run deploy   # npm ci && wrangler deploy (lockfile 고정 — 감사 L11)
 
 ## 5. 마무리
 
-- 잔존 실측 결과·스모크 결과를 이 파일 하단이나 Dev Log에 1줄 기록
+- 잔존 실측 결과(R2·D1)·스모크 결과를 이 파일 하단이나 Dev Log에 1줄 기록
+- 공개 문서 정합 확인: docs/PRIVACY.md의 "공개 링크와 이전 버전" 문단이 410 현실과 일치하는지(0.4.4에서 갱신됨 — 배포 전 재확인만)
 - `git tag v0.4.4 && git push origin v0.4.4`
 - 스토어 제출 없음(0.4.6 랜딩 후 일괄)
