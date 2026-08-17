@@ -1,26 +1,7 @@
-import {
-  DAY_MS,
-  EXPIRY_DAYS_ALLOWLIST,
-  MAX_UPLOAD_BYTES,
-  isPngMagic,
-  isExpiredAt,
-  parseExpiresInDays,
-  readExpiry,
-  buildViewerHtml,
-  buildExpiredHtml,
-  parseSharedContext,
-  safeDecodeId
-} from './lib'
 import { resolveMcpAuth } from './auth'
 import { rejectInvalidOrigin } from './origin'
-import {
-  captureRowFromSharedContext,
-  cleanupUploadObjects,
-  insertCapture
-} from './ingest'
-import { generateUserToken, ownerFromToken, verifyUserToken } from './token'
+import { generateUserToken } from './token'
 import { allowTokenRequest } from './token-rate-limit'
-import { allowUploadRequest } from './upload-rate-limit'
 import { handlePrivateCaptureRoutes } from './private-capture-routes'
 import type { Env } from './env'
 
@@ -32,10 +13,21 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization'
 }
 
-// 보관 기간이 1/7/30 으로 갈라진 뒤에도 맞는 문구. 일수를 붙이지 않는 이유는
-// 물리 삭제된 객체의 보관일수를 알 수 없고, 아는 경우에만 붙이면 존재 오라클이 되기 때문
-const GONE_MSG =
-  '이 링크는 만료되었거나 존재하지 않습니다. (공유 링크는 선택한 보관 기간이 지나면 자동 삭제됩니다)'
+// ADR-015 2차(0.4.4): id 만 알면 열리던 무서명 경로 3종(POST /upload·GET /i/{id}·
+// GET /s/{id})을 영구 폐쇄한다. 인증 실패(401/403)가 아니라 라우트 자체가 사라졌다는
+// 신호라 410 을 쓴다. 본문은 확장이 실제로 읽지 않으므로(2xx 아니면 토스트만) 길게
+// 설명하지 않는다.
+const LEGACY_GONE_MSG =
+  '이 주소는 더 이상 제공되지 않습니다. 최신 버전의 확장 프로그램을 사용해 주세요.'
+
+/** POST /upload·GET /i/{id}·GET /s/{id} 판정. 메서드 무관(OPTIONS 포함)하게 전부 410. */
+function isLegacyGonePath(pathname: string): boolean {
+  return (
+    pathname === '/upload' ||
+    pathname.startsWith('/i/') ||
+    pathname.startsWith('/s/')
+  )
+}
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -52,17 +44,6 @@ function textResponse(
   return new Response(body, {
     status,
     headers: { 'Content-Type': 'text/plain; charset=utf-8', ...CORS, ...extra }
-  })
-}
-
-function htmlResponse(body: string, status: number): Response {
-  return new Response(body, {
-    status,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-cache',
-      ...CORS
-    }
   })
 }
 
@@ -89,6 +70,13 @@ export default {
         return jsonResponse({ ok: true, dogfood: true })
       }
       return textResponse('Not found', 404)
+    }
+
+    // 레거시 폐쇄 경로는 라우팅·전역 OPTIONS 분기보다 먼저 걸러낸다 — 아래 전역
+    // OPTIONS 가 이 경로들의 preflight 에 200 을 주는 불일치를 원천 차단한다.
+    // env 를 전혀 건드리지 않는다: BUCKET/D1 조회 코드는 여기서 이미 존재하지 않는다.
+    if (isLegacyGonePath(url.pathname)) {
+      return textResponse(LEGACY_GONE_MSG, 410, { 'Cache-Control': 'no-store' })
     }
 
     // MCP 분기 우선 — 전역 OPTIONS 보다 먼저 (MAJOR-1). Origin 불일치는 OPTIONS 포함 403
@@ -120,7 +108,7 @@ export default {
     )
     if (privateCaptureResponse !== null) return privateCaptureResponse
 
-    // 토큰 발급: POST /token — chrome-extension Origin 필수 (/upload 에는 Origin 검증 없음)
+    // 토큰 발급: POST /token — chrome-extension Origin 필수
     if (req.method === 'POST' && url.pathname === '/token') {
       const origin = req.headers.get('Origin') ?? ''
       if (!origin.startsWith('chrome-extension://')) {
@@ -139,179 +127,6 @@ export default {
       }
       const token = await generateUserToken(secret)
       return jsonResponse({ token })
-    }
-
-    // 업로드: POST /upload (multipart/form-data: image 필수, context 선택)
-    // Authorization optional — 없음=익명(owner NULL). malformed/HMAC 실패=401. Origin 검증 없음.
-    if (req.method === 'POST' && url.pathname === '/upload') {
-      // rate-limit 을 분기 최상단에 — body 버퍼링·formData 파싱 전에 abusive load 를 흘린다.
-      // /token 과 카운터 Map 분리(upload-rate-limit.ts): 발급 한도와 서로 잠식하지 않음.
-      const ip = req.headers.get('CF-Connecting-IP') ?? ''
-      if (!allowUploadRequest(ip)) {
-        return textResponse('업로드 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.', 429)
-      }
-      const cl = Number(req.headers.get('content-length') ?? '0')
-      if (Number.isFinite(cl) && cl > MAX_UPLOAD_BYTES + 1024 * 1024) {
-        return textResponse('파일이 너무 큽니다. (최대 10MB)', 413)
-      }
-
-      // optional bearer → owner (TOKEN_SIGNING_SECRET 미설정 시 토큰 검증 경로만 비활성)
-      let owner: string | null = null
-      const authHeader = req.headers.get('Authorization')
-      if (authHeader !== null) {
-        const signing = env.TOKEN_SIGNING_SECRET
-        if (signing !== undefined && signing.length > 0) {
-          if (!authHeader.startsWith('Bearer ')) {
-            return textResponse('Unauthorized', 401)
-          }
-          const raw = authHeader.slice('Bearer '.length)
-          if (!(await verifyUserToken(raw, signing))) {
-            return textResponse('Unauthorized', 401)
-          }
-          owner = await ownerFromToken(raw)
-        }
-        // secret 미설정 → 검증 경로 비활성, owner NULL(익명) 유지
-      }
-
-      let form: FormData
-      try {
-        form = await req.formData()
-      } catch {
-        return textResponse('잘못된 업로드 형식입니다.', 400)
-      }
-      const image: unknown = form.get('image')
-      if (!(image instanceof File) && !(image instanceof Blob)) {
-        return textResponse('이미지가 없습니다.', 400)
-      }
-      if (image.size > MAX_UPLOAD_BYTES) {
-        return textResponse('파일이 너무 큽니다. (최대 10MB)', 413)
-      }
-      // 보관 기간 검증은 arrayBuffer() 앞 — 무효 요청에 메모리를 쓰지 않는다
-      const days = parseExpiresInDays(form.get('expiresInDays'))
-      if (days === null) {
-        return textResponse(
-          `보관 기간은 ${EXPIRY_DAYS_ALLOWLIST.join(', ')}일 중에서만 선택할 수 있습니다.`,
-          400
-        )
-      }
-      const buf = await image.arrayBuffer()
-      if (!isPngMagic(new Uint8Array(buf.slice(0, 8)))) {
-        return textResponse('PNG 이미지만 업로드할 수 있습니다.', 415)
-      }
-      const id = crypto.randomUUID()
-      const nowMs = Date.now()
-      // 만료 절대시각은 여기서 1회만 계산 — 이미지 put·{id}.json put·D1 insert 가
-      // 같은 문자열을 공유해야 저장소 간 split-brain 이 물리적으로 불가능해진다
-      const expiresAtIso = new Date(nowMs + days * DAY_MS).toISOString()
-      const expiryMeta: Record<string, string> =
-        owner === null
-          ? { expiresAt: expiresAtIso }
-          : { expiresAt: expiresAtIso, owner }
-      const context = form.get('context')
-      const hasContext = typeof context === 'string' && context.length > 0
-      let wroteJson = false
-      try {
-        await env.BUCKET.put(id, buf, {
-          httpMetadata: { contentType: 'image/png' },
-          customMetadata: expiryMeta
-        })
-        if (hasContext) {
-          await env.BUCKET.put(`${id}.json`, context, {
-            httpMetadata: { contentType: 'application/json' },
-            customMetadata: expiryMeta
-          })
-          wroteJson = true
-        }
-      } catch {
-        return textResponse('업로드에 실패했습니다. 잠시 후 다시 시도해 주세요.', 502)
-      }
-
-      // 수집 = 공유 업로드분(context 있을 때만 D1 인덱스). bearer 있으면 owner 스탬프.
-      if (hasContext) {
-        const shared = parseSharedContext(context)
-        if (shared) {
-          try {
-            await insertCapture(
-              env.DB,
-              captureRowFromSharedContext({
-                id,
-                ctx: shared,
-                nowMs,
-                expiresAtIso,
-                owner
-              })
-            )
-          } catch {
-            await cleanupUploadObjects(env.BUCKET, id, wroteJson)
-            return textResponse(
-              '인덱스 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-              500
-            )
-          }
-        } else {
-          // malformed JSON: R2 raw 는 유지·뷰어 그레이스풀 저하와 일관. D1 스킵은 관측 가능하게.
-          console.warn(
-            '[upload] context present but JSON parse failed; D1 index skipped'
-          )
-        }
-      }
-
-      return jsonResponse({ id, url: `${url.origin}/s/${id}` })
-    }
-
-    // raw 이미지: GET /i/{id}
-    if (req.method === 'GET' && url.pathname.startsWith('/i/')) {
-      const id = safeDecodeId(url.pathname.slice(3))
-      // now 는 분기당 1회만 — 판정·헤더가 같은 시각을 봐야 한다
-      const now = Date.now()
-      let obj: R2ObjectBody | null
-      try {
-        obj = await env.BUCKET.get(id)
-      } catch {
-        return textResponse('이미지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.', 502)
-      }
-      // 410 은 RFC 9111 상 heuristic cacheable — 명시적으로 캐시를 막는다
-      if (!obj) {
-        return textResponse(GONE_MSG, 410, { 'Cache-Control': 'no-store' })
-      }
-      const expiry = readExpiry(obj)
-      if (isExpiredAt(expiry.expiresAtMs, now)) {
-        return textResponse(GONE_MSG, 410, { 'Cache-Control': 'no-store' })
-      }
-      // 만료 뒤에도 캐시가 살아 유령 서빙하지 않도록 잔여 수명만큼만 캐시.
-      // 이 지점은 isExpiredAt 가드를 통과한 뒤라 음수가 불가능하다 → Math.max 보정 금지(보정 = fallback)
-      const remainingSec = Math.floor((expiry.expiresAtMs - now) / 1000)
-      return new Response(obj.body, {
-        headers: {
-          'Content-Type': obj.httpMetadata?.contentType ?? 'image/png',
-          'Cache-Control':
-            remainingSec > 0 ? `public, max-age=${remainingSec}` : 'no-store',
-          ...CORS
-        }
-      })
-    }
-
-    // 뷰어: GET /s/{id}
-    if (req.method === 'GET' && url.pathname.startsWith('/s/')) {
-      const id = safeDecodeId(url.pathname.slice(3))
-      // now 는 분기당 1회만 — 판정과 표시가 같은 시각을 봐야 한다
-      const now = Date.now()
-      try {
-        const head = await env.BUCKET.head(id)
-        if (!head) {
-          return htmlResponse(buildExpiredHtml(), 410)
-        }
-        const expiry = readExpiry(head)
-        if (isExpiredAt(expiry.expiresAtMs, now)) {
-          return htmlResponse(buildExpiredHtml(), 410)
-        }
-        const ctxObj = await env.BUCKET.get(`${id}.json`)
-        const shared = ctxObj ? parseSharedContext(await ctxObj.text()) : null
-        const html = buildViewerHtml(id, shared, expiry)
-        return htmlResponse(html, 200)
-      } catch {
-        return textResponse('페이지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.', 502)
-      }
     }
 
     return textResponse('Not found', 404)

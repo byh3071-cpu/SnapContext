@@ -542,9 +542,9 @@ describe('P4 — MCP 자발 사용 문구 (instructions·description·annotation
     expect(text).toContain('instead of asking them to paste an image')
   })
 
-  it('serverInfo.version 이 0.4.2', async () => {
+  it('serverInfo.version 이 0.4.4', async () => {
     const result = await initResult()
-    expect(result.serverInfo?.version).toBe('0.4.2')
+    expect(result.serverInfo?.version).toBe('0.4.4')
   })
 
   it('툴 description 에 트리거 문구가 실린다', async () => {

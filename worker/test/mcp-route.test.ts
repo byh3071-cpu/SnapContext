@@ -100,10 +100,12 @@ describe('OPTIONS /mcp — Origin 게이트가 전역 OPTIONS 보다 우선 (MAJ
     expect(res.status).toBe(200)
   })
 
-  it('비-/mcp OPTIONS 는 기존처럼 200', async () => {
+  it('비-/mcp OPTIONS 는 기존처럼 200 (레거시 폐쇄 경로가 아닌 일반 경로)', async () => {
+    // 0.4.4(ADR-015 2차): /upload 는 레거시 폐쇄 3경로 중 하나라 OPTIONS 도 410 로
+    // 바뀐다 — 이 테스트가 검증하려는 "전역 OPTIONS 200" 대표 경로로는 더 이상 부적합.
     const env = makeEnv()
     const res = await worker.fetch(
-      new Request('https://w.test/upload', {
+      new Request('https://w.test/captures', {
         method: 'OPTIONS',
         headers: { Origin: 'https://evil.example' }
       }),

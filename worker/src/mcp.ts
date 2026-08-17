@@ -44,7 +44,7 @@ export function createSnapMcpServer(
 ): McpServer {
   mcpServerCreateCount += 1
   const server = new McpServer(
-    { name: 'snapcontext', version: '0.4.2' },
+    { name: 'snapcontext', version: '0.4.4' },
     { instructions: SERVER_INSTRUCTIONS }
   )
 
