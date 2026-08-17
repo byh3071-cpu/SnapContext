@@ -110,5 +110,5 @@ npx wrangler d1 execute snapcontext-captures --remote --command "DELETE FROM cap
 
 1. ~~위 D1 DELETE 1줄~~ ✅ 2026-08-17 요한 실행, 재조회 0행 확인
 2. ~~D1 마이그레이션 적용~~ ✅ 2026-08-17 요한 실행(`migrations apply` 0002 ✅) — 상세: troubleshooting/2026-08-17-d1-migration-drift-500.md. **차기 런북 고정 단계**: 배포 전 `wrangler d1 migrations list --remote` 빈 목록 확인.
-3. ~~확장에서 캡처 1건 → 스모크 2·3·4~~ ✅ 2026-08-17 23:07 저장·목록·digest·이미지 200 전부 확인. 삭제 후 사라짐만 요한 1클릭 잔여.
-4. `git tag v0.4.4 && git push origin v0.4.4`
+3. ~~확장에서 캡처 1건 → 스모크 2·3·4~~ ✅ 2026-08-17 23:07 저장·목록·digest·이미지 200 확인. 삭제도 완결 — "즉시 삭제" 후 목록 소멸 + snap_pack NOT_FOUND(R2 실물까지 삭제, PRIVACY 계약 실전 증명). 참고: 로컬 히스토리 삭제와 서버 "즉시 삭제"는 별개 버튼 — UX 개선 후보(0.4.6).
+4. ~~`git tag v0.4.4 && git push origin v0.4.4`~~ ✅ 태그 완료 — **스모크 7/7 전항목 PASS, 0.4.4 릴리즈 종결(2026-08-17)**
