@@ -72,13 +72,3 @@ export async function insertCapture(
     )
     .run()
 }
-
-/** D1 실패 시 R2 orphan 정리 — best-effort (allSettled). 본 에러는 호출측 D1 5xx */
-export async function cleanupUploadObjects(
-  bucket: R2Bucket,
-  id: string,
-  wroteJson: boolean
-): Promise<void> {
-  const keys = wroteJson ? [id, `${id}.json`] : [id]
-  await Promise.allSettled(keys.map((key) => bucket.delete(key)))
-}

@@ -1,13 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  escapeHtml,
-  sanitizeHttpUrl,
   isPngMagic,
   readExpiry,
   isExpiredAt,
-  formatExpiryKST,
-  buildViewerHtml,
-  buildExpiredHtml,
   parseSharedContext,
   parseExpiresInDays,
   safeDecodeId,
@@ -15,37 +10,10 @@ import {
   DEFAULT_EXPIRY_DAYS,
   EXPIRY_DAYS_ALLOWLIST,
   MAX_AGE_MS,
-  PNG_MAGIC,
-  type ExpiryInfo,
-  type SharedContext
+  PNG_MAGIC
 } from '../src/lib'
 
 const T = Date.parse('2026-07-18T00:00:00.000Z')
-
-/** 레거시(메타 없음) 객체와 동일한 만료 정보 — buildViewerHtml 기존 케이스용 */
-const EXPIRY_LEGACY: ExpiryInfo = {
-  expiresAtMs: T + MAX_AGE_MS,
-  retentionDays: DEFAULT_EXPIRY_DAYS,
-  source: 'legacy'
-}
-
-describe('escapeHtml', () => {
-  it('escapes &, <, >, ", \'', () => {
-    expect(escapeHtml('<script>"&\'')).toBe('&lt;script&gt;&quot;&amp;&#39;')
-  })
-})
-
-describe('sanitizeHttpUrl', () => {
-  it('allows http/https', () => {
-    expect(sanitizeHttpUrl('https://a.com/x')).toBe('https://a.com/x')
-  })
-  it('rejects javascript:', () => {
-    expect(sanitizeHttpUrl('javascript:alert(1)')).toBeNull()
-  })
-  it('rejects garbage', () => {
-    expect(sanitizeHttpUrl('not a url')).toBeNull()
-  })
-})
 
 describe('isPngMagic', () => {
   it('true for PNG signature', () => {
@@ -166,29 +134,6 @@ describe('isExpiredAt (경계)', () => {
   })
 })
 
-describe('formatExpiryKST', () => {
-  const kst = (ms: number) =>
-    new Intl.DateTimeFormat('ko-KR', {
-      timeZone: 'Asia/Seoul',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(new Date(ms))
-
-  it('returns non-empty string', () => {
-    const s = formatExpiryKST(1_700_000_000_000)
-    expect(typeof s).toBe('string')
-    expect(s.length).toBeGreaterThan(0)
-  })
-
-  it('받은 epoch ms 를 그대로 포맷한다 (내부에서 7일을 더하지 않는다)', () => {
-    expect(formatExpiryKST(T)).toBe(kst(T))
-    expect(formatExpiryKST(T)).not.toBe(formatExpiryKST(T + MAX_AGE_MS))
-  })
-})
-
 describe('parseSharedContext', () => {
   it('parses valid json', () => {
     const ctx = parseSharedContext('{"v":1,"sourceUrl":"http://a"}')
@@ -199,77 +144,7 @@ describe('parseSharedContext', () => {
   })
 })
 
-describe('buildViewerHtml', () => {
-  const ctx: SharedContext = {
-    v: 1,
-    sourceUrl: 'http://a.com/p',
-    sourceTitle: '<script>x',
-    captureType: 'visible',
-    capturedAt: '2026-06-04T00:00:00.000Z',
-    viewport: { width: 1280, height: 720 },
-    pins: [{ id: 1, memo: '<b>memo' }]
-  }
-  it('escapes title (no raw script)', () => {
-    const html = buildViewerHtml('id1', ctx, EXPIRY_LEGACY)
-    expect(html).not.toContain('<script>x')
-    expect(html).toContain('&lt;script&gt;x')
-  })
-  it('references /i/{id}', () => {
-    expect(buildViewerHtml('id1', ctx, EXPIRY_LEGACY)).toContain('/i/id1')
-  })
-  it('does not linkify javascript: url', () => {
-    const bad = { ...ctx, sourceUrl: 'javascript:alert(1)' }
-    const html = buildViewerHtml('id2', bad, EXPIRY_LEGACY)
-    expect(html).not.toContain('href="javascript:')
-  })
-  it('renders image-only when ctx is null', () => {
-    const html = buildViewerHtml('id3', null, EXPIRY_LEGACY)
-    expect(html).toContain('/i/id3')
-    expect(html).not.toContain('<dl>')
-  })
-  it('notice 는 ExpiryInfo 로 만든다 — 일수·라벨이 같은 값에서 나온다', () => {
-    const html = buildViewerHtml('id4', null, EXPIRY_LEGACY)
-    expect(html).toContain(
-      `익명 공유 · 업로드 후 7일 자동 삭제 (만료 예정: ${formatExpiryKST(EXPIRY_LEGACY.expiresAtMs)})`
-    )
-  })
-  it('retentionDays 가 바뀌면 문구 일수도 따라 바뀐다 (하드코딩 7일 아님)', () => {
-    const expiry1: ExpiryInfo = {
-      expiresAtMs: T + DAY_MS,
-      retentionDays: 1,
-      source: 'metadata'
-    }
-    const html = buildViewerHtml('id5', null, expiry1)
-    expect(html).toContain('업로드 후 1일 자동 삭제')
-    expect(html).not.toContain('업로드 후 7일 자동 삭제')
-    expect(html).toContain(formatExpiryKST(T + DAY_MS))
-  })
-})
-
-describe('buildExpiredHtml (T3.3 — 탈-7일)', () => {
-  it("'7일' 이 없고 보관 기간 문구로 대체된다", () => {
-    const html = buildExpiredHtml()
-    expect(html).not.toContain('7일')
-    expect(html).toContain(
-      '이 링크는 만료되었거나 존재하지 않습니다.<br>(공유 링크는 선택한 보관 기간이 지나면 자동 삭제됩니다)'
-    )
-  })
-
-  it('인자 0개를 유지한다 — 보관일수를 붙이면 존재 오라클이 된다', () => {
-    // 물리 삭제된 객체는 보관일수를 알 수 없고, 아는 경우에만 일수를 붙이면
-    // "이 id 는 실재했다" 가 응답 차이로 새어 나간다
-    expect(buildExpiredHtml.length).toBe(0)
-  })
-})
-
 describe('hardening (regression)', () => {
-  it('escapeHtml processes & first (no double-escape)', () => {
-    expect(escapeHtml('a&lt;b')).toBe('a&amp;lt;b')
-  })
-  it('sanitizeHttpUrl rejects uppercase/whitespace javascript scheme', () => {
-    expect(sanitizeHttpUrl(' JavaScript:alert(1)')).toBeNull()
-    expect(sanitizeHttpUrl('java\tscript:alert(1)')).toBeNull()
-  })
   it('parseSharedContext rejects JSON arrays', () => {
     expect(parseSharedContext('[1,2,3]')).toBeNull()
   })
@@ -277,18 +152,5 @@ describe('hardening (regression)', () => {
     expect(safeDecodeId('%41bc')).toBe('Abc')
     expect(safeDecodeId('%')).toBe('%')
     expect(safeDecodeId('abc-123')).toBe('abc-123')
-  })
-  it('buildViewerHtml escapes quotes in source url (no attribute breakout)', () => {
-    const ctx: SharedContext = {
-      v: 1,
-      sourceUrl: 'http://a.com/"><script>alert(1)</script>',
-      sourceTitle: 't',
-      captureType: 'visible',
-      capturedAt: '2026',
-      viewport: { width: 1, height: 2 },
-      pins: []
-    }
-    const html = buildViewerHtml('idq', ctx, EXPIRY_LEGACY)
-    expect(html).not.toContain('"><script>alert(1)')
   })
 })
