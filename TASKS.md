@@ -7,10 +7,9 @@
   - 남은 것: production 배포(`wrangler deploy`) → PRIVACY 공개 → tag `v0.4.2`.
   - 선택(권장): staging TOKEN_SIGNING_SECRET 회전(smoke 토큰 일괄 무효화).
 
-- [ ] **P0 — 0.4.4 구현 완료 → critic 수정 루프 마무리·배포(사람)**
-  - 레거시 3경로(410·no-store) 제거 구현 완료(worker 커밋 f0ebbe2~f609424, 195 green). 감사 핸드오프 반영: H1→D2 3분기 판정, 편승 6건 적용(M1은 0.4.5 이월).
-  - critic 1차 불통과(높음2·중간3) → 수정 루프 진행 중: deploy 스크립트 복구·레거시 fallback 뮤테이션 그물·/captures 실패경로 테스트·런북 D1 정리·PRIVACY 갱신.
-  - 남은 사람 게이트: R2·D1 잔존 실측 → `pnpm run deploy`(worker) → 라이브 스모크 → tag `v0.4.4`. 절차: docs/runbook-0.4.4.md.
+- [ ] **P0 — 0.4.4 배포 실행 (전부 사람 게이트 — 코드·검증 완료)**
+  - 구현·적대검증 통과(2026-08-17, worker 201 green·뮤테이션 그물 사멸 실측·로컬 스모크 410+verify 18/18). 상세: docs/log/2026-08-17-0.4.4-legacy-removal.md.
+  - 남은 것: R2·D1 잔존 실측(3분기 판정)+lifecycle 확인 → `pnpm run deploy`(worker) → 스모크 7항목 → tag `v0.4.4`. 절차: docs/runbook-0.4.4.md.
 
 - [ ] **P1 — 스토어 재심사 제출: 0.4.6 랜딩 후 마지막에 1회 (로드맵 재편 2026-08-17)**
   - 0.4.2~0.4.6(UX 다듬기 포함)을 제출 없이 개발 진행 → 완성본으로 재심사 #1 제출(0.4.2·0.4.3·0.4.6 편승).
