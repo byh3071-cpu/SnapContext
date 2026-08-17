@@ -5,6 +5,8 @@
   "compatibility_date": "2025-05-01",
   // agents SDK createMcpHandler — nodejs_compat 필요 여부는 wrangler dev로 확인 후 반영
   "compatibility_flags": ["nodejs_compat"],
+  // 감사 M5: 프로덕션 로그 관측 — 데이터 유실 직결 warn이 대시보드에 보이게
+  "observability": { "enabled": true },
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "snapcontext-uploads" }
   ],
