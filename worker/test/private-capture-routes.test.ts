@@ -35,6 +35,8 @@ interface TestState {
   events: string[]
   failR2Delete: boolean
   failD1Delete: boolean
+  failR2Put: boolean
+  failD1Insert: boolean
 }
 
 function bytesFrom(value: ArrayBuffer | ArrayBufferView | string | Blob): Promise<Uint8Array> {
@@ -64,7 +66,9 @@ function makeEnv(overrides: Partial<Pick<Env, 'TOKEN_SIGNING_SECRET'>> = {}): {
     r2Deletes: [],
     events: [],
     failR2Delete: false,
-    failD1Delete: false
+    failD1Delete: false,
+    failR2Put: false,
+    failD1Insert: false
   }
 
   const bucket = {
@@ -76,6 +80,7 @@ function makeEnv(overrides: Partial<Pick<Env, 'TOKEN_SIGNING_SECRET'>> = {}): {
         httpMetadata?: { contentType?: string }
       }
     ): Promise<void> {
+      if (state.failR2Put) throw new Error('R2 put failed')
       state.r2Writes.push(key)
       state.events.push(`r2:put:${key.endsWith('.json') ? 'json' : 'image'}`)
       state.objects.set(key, {
@@ -112,6 +117,7 @@ function makeEnv(overrides: Partial<Pick<Env, 'TOKEN_SIGNING_SECRET'>> = {}): {
       }
     },
     async head(key: string): Promise<R2Object | null> {
+      state.r2Reads.push(key)
       const stored = state.objects.get(key)
       if (!stored) return null
       return {
@@ -150,6 +156,7 @@ function makeEnv(overrides: Partial<Pick<Env, 'TOKEN_SIGNING_SECRET'>> = {}): {
         },
         async run() {
           if (/INSERT\s+INTO\s+captures/i.test(sql)) {
+            if (state.failD1Insert) throw new Error('D1 insert failed')
             const [id, createdAt, url, title, captureType, pinCount, expiresAt, owner] = args
             if (
               typeof id !== 'string' ||
@@ -235,11 +242,15 @@ function contextJson(): string {
   })
 }
 
-function uploadRequest(token?: string, context = contextJson()): Request {
+function uploadRequest(
+  token?: string,
+  context = contextJson(),
+  expiresInDays = '7'
+): Request {
   const form = new FormData()
   form.append('image', new Blob([PNG], { type: 'image/png' }), 'capture.png')
   form.append('context', context)
-  form.append('expiresInDays', '7')
+  form.append('expiresInDays', expiresInDays)
   return new Request('https://worker.example/captures', {
     method: 'POST',
     body: form,
@@ -332,6 +343,66 @@ describe('POST /captures', () => {
     )
     expect(response.status).toBe(410)
   })
+
+  it('expiresInDays가 allowlist(1/7/30) 밖(3)이면 400이며 R2·D1 write가 0회다', async () => {
+    const { env, state } = makeEnv()
+    const response = await worker.fetch(
+      uploadRequest(await userToken(), undefined, '3'),
+      env,
+      {} as ExecutionContext
+    )
+
+    expect(response.status).toBe(400)
+    expect(state.r2Writes).toEqual([])
+    expect(state.rows.size).toBe(0)
+  })
+
+  it('R2 put 실패 시 5xx이며 D1 write가 0회다', async () => {
+    const { env, state } = makeEnv()
+    state.failR2Put = true
+
+    const response = await worker.fetch(
+      uploadRequest(await userToken()),
+      env,
+      {} as ExecutionContext
+    )
+
+    expect(response.status).toBeGreaterThanOrEqual(500)
+    expect(response.status).toBeLessThan(600)
+    expect(state.rows.size).toBe(0)
+  })
+
+  it('D1 insert 실패 시 500이며 R2에 쓴 이미지·json 2키를 정리(delete)한다', async () => {
+    const { env, state } = makeEnv()
+    state.failD1Insert = true
+
+    const response = await worker.fetch(
+      uploadRequest(await userToken()),
+      env,
+      {} as ExecutionContext
+    )
+
+    expect(response.status).toBe(500)
+    expect(state.r2Writes).toHaveLength(2)
+    expect(state.r2Deletes.slice().sort()).toEqual(state.r2Writes.slice().sort())
+    expect(state.rows.size).toBe(0)
+  })
+
+  it('rate limit(분당 20회) 초과 시 429이며 초과분은 R2·D1 write가 추가되지 않는다', async () => {
+    const { env, state } = makeEnv()
+    const token = await userToken()
+    for (let i = 0; i < 20; i++) {
+      await uploadOne(env, token)
+    }
+    const writesBefore = state.r2Writes.length
+    const rowsBefore = state.rows.size
+
+    const response = await worker.fetch(uploadRequest(token), env, {} as ExecutionContext)
+
+    expect(response.status).toBe(429)
+    expect(state.r2Writes).toHaveLength(writesBefore)
+    expect(state.rows.size).toBe(rowsBefore)
+  })
 })
 
 describe('GET /pi/{id}', () => {
@@ -378,6 +449,37 @@ describe('GET /pi/{id}', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store')
     expect(response.headers.get('Content-Type')).toBe('image/png')
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG)
+  })
+
+  it('raw-ID로 저장된 레거시 흔적이 있어도 파생 키가 없으면 410이며 조회 키는 전부 private-v2/다', async () => {
+    // 0.4.0~0.4.1 시절 raw ID 를 R2 key 로 직접 쓰던 흔적을 흉내낸다: /captures(v2)
+    // 경로를 거치지 않고 raw id 자체를 키로 심는다. env.BUCKET.get(id) fallback 이
+    // 재삽입되면 이 레거시 객체를 찾아 200 을 반환해버린다.
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_MS)
+    const { env, state } = makeEnv()
+    const legacyId = '22222222-2222-4222-8222-222222222222'
+    state.objects.set(legacyId, {
+      bytes: PNG,
+      uploaded: new Date(NOW_MS),
+      customMetadata: {
+        expiresAt: new Date(NOW_MS + 86_400_000).toISOString(),
+        owner: 'legacy-owner',
+        access: 'private-v2'
+      },
+      contentType: 'image/png'
+    })
+    const signed = await createSignedImageUrl({
+      origin: 'https://worker.example',
+      id: legacyId,
+      secret: SIGNING_SECRET,
+      nowMs: NOW_MS
+    })
+
+    const response = await worker.fetch(new Request(signed), env, {} as ExecutionContext)
+
+    expect(response.status).toBe(410)
+    expect(state.r2Reads.length).toBeGreaterThan(0)
+    expect(state.r2Reads.every((key) => key.startsWith('private-v2/'))).toBe(true)
   })
 })
 

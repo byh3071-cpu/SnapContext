@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "npm ci && wrangler deploy",
+    "deploy": "pnpm install --frozen-lockfile --filter snapcontext-worker && wrangler deploy",
     "test": "vitest run && vitest run --config vitest.d1.config.mts",
     "test:d1": "vitest run --config vitest.d1.config.mts",
     "typecheck": "tsc --noEmit"

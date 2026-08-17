@@ -41,15 +41,25 @@ function v2Context(mode = 'refactor', intent = '이 화면을 개선해 주세�
   })
 }
 
-function makeBucket(objects: Map<string, Stored>): R2Bucket {
-  return {
+/**
+ * head/get 으로 실제 요청된 키를 기록한다 — private-v2/ 파생 키가 아닌 raw ID 로
+ * fallback 조회하는 회귀(pack.ts:74 뮤테이션)를 키 수준에서 잡기 위함.
+ */
+function makeTrackedBucket(objects: Map<string, Stored>): {
+  bucket: R2Bucket
+  reads: string[]
+} {
+  const reads: string[] = []
+  const bucket = {
     async head(key: string) {
+      reads.push(key)
       const value = objects.get(key)
       return value
         ? { uploaded: value.uploaded, customMetadata: value.customMetadata }
         : null
     },
     async get(key: string) {
+      reads.push(key)
       const value = objects.get(key)
       return value
         ? {
@@ -62,6 +72,11 @@ function makeBucket(objects: Map<string, Stored>): R2Bucket {
         : null
     }
   } as unknown as R2Bucket
+  return { bucket, reads }
+}
+
+function makeBucket(objects: Map<string, Stored>): R2Bucket {
+  return makeTrackedBucket(objects).bucket
 }
 
 async function privateObjects(owner: string | null): Promise<Map<string, Stored>> {
@@ -166,10 +181,54 @@ describe('MCP owner 격리', () => {
         }
       ]
     ])
+    const { bucket, reads } = makeTrackedBucket(legacy)
 
     await expect(
-      getSnapPack(makeBucket(legacy), options())
+      getSnapPack(bucket, options())
     ).rejects.toMatchObject({ message: 'NOT_FOUND' })
+    // fallback 이 재삽입되면 raw ID(private-v2/ 접두 없음)로도 head 를 호출한다 —
+    // owner 판정과 무관하게 이 시점에서 회귀를 잡는다.
+    expect(reads.length).toBeGreaterThan(0)
+    expect(reads.every((key) => key.startsWith('private-v2/'))).toBe(true)
+  })
+
+  it('owner가 스탬프된 레거시 raw-ID 객체도 NOT_FOUND다 (assertOwner 우회 회귀 방지)', async () => {
+    // 0.4.0~0.4.1 의 /upload 는 bearer 인증 시 owner 를 raw-ID 객체에도 스탬프했다.
+    // 위 테스트(owner 없음)는 fallback 이 재삽입돼도 assertOwner 가 대신 막아버려
+    // 뮤테이션이 생존한다 — 이 케이스는 owner 가 요청자와 일치해 assertOwner 를
+    // 통과하므로, fallback 재삽입 시 NOT_FOUND 가 아니라 레거시 pack 이 반환된다.
+    const legacyWithOwner = new Map<string, Stored>([
+      [
+        ID,
+        {
+          uploaded: new Date(NOW),
+          customMetadata: { expiresAt: EXPIRES, owner: OWNER_A }
+        }
+      ],
+      [
+        `${ID}.json`,
+        {
+          text: JSON.stringify({
+            v: 1,
+            sourceUrl: 'https://example.com',
+            sourceTitle: '레거시',
+            captureType: 'visible',
+            capturedAt: '2026-08-05T00:00:00.000Z',
+            viewport: { width: 1, height: 1 },
+            pins: []
+          }),
+          uploaded: new Date(NOW),
+          customMetadata: { expiresAt: EXPIRES, owner: OWNER_A }
+        }
+      ]
+    ])
+    const { bucket, reads } = makeTrackedBucket(legacyWithOwner)
+
+    await expect(
+      getSnapPack(bucket, options({ auth: { scope: 'user', owner: OWNER_A } }))
+    ).rejects.toMatchObject({ message: 'NOT_FOUND' })
+    expect(reads.length).toBeGreaterThan(0)
+    expect(reads.every((key) => key.startsWith('private-v2/'))).toBe(true)
   })
 })
 
