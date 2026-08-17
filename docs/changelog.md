@@ -6,9 +6,11 @@ tags: [changelog]
 
 # Changelog
 
-## 0.4.4 — 진행 중 (worker-only)
+## 0.4.4 — 구현 완료 · 적대 검증·배포·tag 대기 (worker-only)
 
-- (예정) 레거시 공개 경로 3종(`/s`·무서명 `/i`·`POST /upload`) 제거 — 410 Gone·no-store. PRD-0.4.4.
+- 레거시 공개 경로 3종(`/s` 뷰어·무서명 `/i`·`POST /upload`)을 제거했다 — 메서드 무관(OPTIONS 포함) 410 Gone + `Cache-Control: no-store`. id만 알면 열리던 문이 전부 닫혔다(ADR-015 2차).
+- 레거시 raw-ID 읽기 fallback(`/pi`·`snap_pack`·`readExpiry`)을 일괄 제거했다(단독 커밋 ff8d19c — 잔존 실측 시 revert 롤백 단위, 런북 참조).
+- viewer dead code와 레거시 커버 테스트 47+개를 정리했다(worker 189+6 green). observability 활성화·deploy lockfile 고정(감사 M5·L11). 배포 절차: docs/runbook-0.4.4.md.
 - v0.4.3 태그 이후 확장 커밋 편입 기재(감사 L3): AI 도구 선택 드롭다운에 벤더 아이콘 추가(f73dee6) — Codex·Cursor는 공식 로고(simple-icons 원형), Claude Code는 자체 제작 아이콘(상표 정책 조사 docs/research/vendor-logo-policy.md), WAI-ARIA listbox 접근성. 토큰 행 레이아웃 수정(b8cf7f2)도 v0.4.3 태그 밖.
 
 ## 0.4.3 — 구현 완료 · 수동 QA·tag 대기 (ext-only)
