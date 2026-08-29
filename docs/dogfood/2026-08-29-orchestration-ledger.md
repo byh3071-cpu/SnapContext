@@ -69,6 +69,7 @@ status: open
 | DF-49 | W2 수정 루프 결과 | critic FAIL(B1·M1·m6) → W2-fix 12.6분(grok) → 재검증 PASS·MAJOR 0. 누적 critic 4회차 300k 토큰. 워커가 "m1은 이미 구현과 일치해 red가 아니었다"고 **거짓 red-first 주장 없이** 보고 | — | — | 워커 보고 정직성 3회 연속 확인 → 부록 D 계약 확정 | (칭찬) |
 | DF-50 | 런타임 단언의 부작용 (설계 교훈) | `assertOneLine`이 저장 성공 토스트 **생성 시점**에 돌아, 문구가 80자를 넘으면 `ImageActions` catch로 빠져 성공한 저장이 실패 배지로 뒤집힘(critic 지적, 도달 불가지만 시한폭탄). 지휘자가 경계 테스트 3건 추가 | 미래 문구 수정 시 조용한 오판정 | `tests/one-line.test.ts` | 규칙: 상수 문구 검증은 모듈 로드/테스트 시점에, 런타임 경로에서 throw 금지 — PAT 후보(`state`) | 중 |
 | DF-51 | W3 기동 — `worktree create --agent cursor` (긍정 + 지휘자 결함) | **첫 탭=에이전트, 폴백 셸 0, Trust 자동 처리** 확인(DF-37 해법 실증). 기본 모델은 Orca 설정의 Composer 2.5(우연히 목표와 일치 — `/model` 전환 로직은 필요 시 작동). 단 내 출력 파이프(`tee \| grep` 정규식 오류)가 기동기를 중간에 죽여 로그가 비었고, 이미 주입된 지시문을 모르고 **한 번 더 보냄**(중복 지시, 워커 컨텍스트 22→25%) | 중복 지시 1회 | 워커가 동일 지시로 인식 | 기동기는 결과를 파일에 직접 쓰고 파이프 후처리 금지 · 주입 전 "이미 작업 중(컨텍스트%>0)"이면 건너뛰기 | 하 |
+| DF-52 | W3 T4b (composer-2.5) 결과 | **7분**에 완료(용어 38건·UI 4건·README·버전 4값·게이트 5항·changelog). 게이트를 먼저 고쳐 red 확인 후 청소(test-first를 문서 티켓에도 적용). status 메일 본문은 PS 인용 문제로 2줄 축약(허용된 폴백) — 전문은 report.md. 티켓의 App.ts "541행" 표기가 코드 주석 위치였음을 워커가 **정정 보고**(DF-43 규칙 적용됨) | — | — | 문서·문자열 티켓 = composer가 grok보다 3배 빠르고 충분 → 로스터 `implement_tier_sizing.small_ticket` 실증 | (칭찬) |
 | DF-22 | vhk `receipt --mark-start` | 실행이 tracked `.vhk/.gitignore`를 수정 → 직후 `mission check`가 scope 밖 변경 경고(노이즈) | 경고 오독 | 무시·커밋 | receipt가 만지는 파일은 mission scope 기본 포함 또는 untracked로 | 하 |
 
 ## 정상 동작 확인(칭찬 목록 — 보고서 균형용)
