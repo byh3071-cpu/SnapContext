@@ -16,6 +16,8 @@
 | src 전체 재검사 | `grep -rnE "'[^']*(주석|어노테이션|업로드|공유|스냅샷|스크린샷)[^']*'" src --include=*.ts`(코드 주석 줄 제외) → **0건**까지. 코드 주석(`//`, `/* */`)·식별자는 손대지 않는다 |
 | `README.md` 9·29·75행 | "핀 주석"→"핀 메모", "Context Pack"→"컨텍스트 팩", "스토어 스크린샷"→"스토어 등록 이미지" · 그 외 본문의 캡쳐/스냅/공유/업로드 표현 점검 |
 | `docs/**` "캡쳐"→"캡처" 전수 | 2026-08-29 실측 38건/11파일(`docs/CONTEXT-PACK-SPEC.md`는 T4a가 완료): changelog 8 · ARCHITECTURE 5 · log/2026-05-10-v011-features 10 · til 3 · adr/002 3 · PRD-0.4.6 2 · log/2026-05-07-v0.1-complete 2 · adr/001 2 · adr/003 1 · adr/005 1 · troubleshooting/001 1. 단순 맞춤법 교정이므로 과거 로그·ADR도 고친다. `docs/dogfood/**`·`docs/tickets/**`는 **제외**(금지어를 의도적으로 인용) |
+| `docs/GLOSSARY.md` 핀 의도 라벨 표 | W1-fix F2로 버튼 툴팁이 바뀜: 참고 = "누르면 버그로 표시 — 예상과 다르게 동작할 때", 버그 = "예상과 다르게 동작해요 (누르면 참고로)". 표의 툴팁 열을 이에 맞게 갱신(현재 참고 "—") |
+| `docs/CONTEXT-PACK-SPEC.md` JSON 예시(7~45행) | 예시가 `"pins": [{id,x,y,memo}]`인데 실제 타입은 `annotations: [{id, position:{x,y}, memo, kind}]`(`src/types/index.ts` 118~128행) — 예시를 실제 타입에 맞추고 kind 포함 |
 | `docs/changelog.md` | `## 0.4.6 — 진행 중 (ext-only)` 절 제목을 `## 0.4.6 — 구현 완료 · 수동 QA·tag 대기 (ext-only)`로, T1~T6 요약 6줄(한 티켓 1줄, 사용자 관점)·용어 사전 신설·버전 4값 기재. worker serverInfo 무변경(ADR-014) 명시 |
 | `package.json` · `manifest.json` · `package-lock.json`(top + `packages[""]`) | `0.4.3` → `0.4.6`. `pnpm check:version`으로 4값 일치 + 스크린샷 생성기 하드코딩 0 확인 |
 | `scripts/check-goal-6.mjs` 63~65행 자리 | goal 6 고유 검증 추가(node 내장만, 외부 grep 의존 금지): ① `src/**/*.ts`에서 코드 주석 줄을 뺀 문자열 리터럴 중 `주석|어노테이션|업로드|공유|스냅샷|스크린샷` 0건 ② `prompts/**/*.md`·`README.md`에 `캡쳐|스냅샷|스크린샷|주석|Context Pack|프롬프트 팩` 0건 ③ `docs/**/*.md`(dogfood·tickets 제외)에 `캡쳐` 0건 ④ `docs/GLOSSARY.md` 존재 ⑤ manifest version === package version === '0.4.6'. 각 항목 `must(cond, label)`로 출력 |
