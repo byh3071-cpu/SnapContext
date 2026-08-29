@@ -2,6 +2,8 @@ import {
   generateContextPack,
   type GenerateContextPackInput
 } from '../../context-pack/generator'
+import { COPY_NEXT_ACTION } from '../../context-pack/next-action'
+import { buildPackSummary, packTemplateLabel } from '../../context-pack/pack-summary'
 import {
   buildTemplatePrompt,
   DEFAULT_PROMPT_TEMPLATE,
@@ -58,11 +60,11 @@ export function mountContextPackPanel(
   let history: PackHistoryItem[] = []
   let loadedPack: ContextPack | null = null
 
-  /* ---- 섹션 헤드: 03 | 컨텍스트 팩 / AI 디버그 팩 | n 팩 ---- */
+  /* ---- 섹션 헤드: 03 | 컨텍스트 팩 | n 팩 ---- */
   const { head, asideEl } = mkSecHead({
     num: '03',
     eyebrow: '컨텍스트 팩',
-    title: 'AI 디버그 팩',
+    title: '컨텍스트 팩',
     titleId: 'sec-pack-title',
     asideText: '0 팩'
   })
@@ -133,7 +135,7 @@ export function mountContextPackPanel(
 
   /* ---- 복사 버튼 스택 (폼 정렬축 인셋) ---- */
   const btnStack = document.createElement('div')
-  btnStack.className = 'btn-stack fg-inset'
+  btnStack.className = 'btn-stack'
 
   const mkBtn = (
     label: string,
@@ -162,7 +164,47 @@ export function mountContextPackPanel(
   const duo = document.createElement('div')
   duo.className = 'duo'
   duo.append(btnJson, btnCopyAll)
-  btnStack.append(btnPrompt, duo)
+  btnStack.append(duo)
+
+  const summaryCard = document.createElement('section')
+  summaryCard.className = 'context-pack-panel__summary fg-inset'
+  summaryCard.setAttribute('aria-label', '컨텍스트 팩 요약')
+
+  const mkSummaryItem = (
+    label: string
+  ): { row: HTMLDivElement; valueEl: HTMLSpanElement } => {
+    const row = document.createElement('div')
+    row.className = 'context-pack-panel__summary-item'
+    const labelEl = document.createElement('span')
+    labelEl.className = 'context-pack-panel__summary-label'
+    labelEl.textContent = label
+    const valueEl = document.createElement('span')
+    valueEl.className = 'context-pack-panel__summary-value'
+    row.append(labelEl, valueEl)
+    return { row, valueEl }
+  }
+
+  const itemTemplate = mkSummaryItem('템플릿')
+  const itemPins = mkSummaryItem('핀')
+  const itemImage = mkSummaryItem('이미지')
+  const itemNote = mkSummaryItem('추가 메모')
+  const summaryItems = document.createElement('div')
+  summaryItems.className = 'context-pack-panel__summary-items'
+  summaryItems.append(
+    itemTemplate.row,
+    itemPins.row,
+    itemImage.row,
+    itemNote.row
+  )
+  summaryCard.append(summaryItems, btnPrompt)
+
+  const rawDetails = document.createElement('details')
+  rawDetails.className = 'context-pack-panel__raw fg-inset'
+  const rawSummary = document.createElement('summary')
+  rawSummary.textContent = '자세히 보기'
+  const rawText = document.createElement('pre')
+  rawText.className = 'context-pack-panel__raw-text'
+  rawDetails.append(rawSummary, rawText, btnStack)
 
   /* ---- 프로젝트 프로필 (v0.2 복원 전까지 hidden 게이트 유지) ---- */
   const profileSection = document.createElement('details')
@@ -214,7 +256,8 @@ export function mountContextPackPanel(
     matchedProfile,
     hint,
     formGrid,
-    btnStack,
+    summaryCard,
+    rawDetails,
     profileSection,
     historySection
   )
@@ -379,12 +422,42 @@ export function mountContextPackPanel(
     hint.textContent = hasLoadedPack
       ? `불러온 컨텍스트 팩: ${loadedPack?.source.title || loadedPack?.source.url}`
       : hasCap
-      ? 'AI용 디버그 프롬프트, JSON 팩 또는 주석이 포함된 PNG를 복사하세요.'
-      : 'AI 디버그 팩을 만들려면 페이지 또는 요소를 캡처하세요.'
+      ? '복사될 내용을 요약 카드에서 확인하고 AI 프롬프트를 복사하세요.'
+      : '컨텍스트 팩을 만들려면 페이지 또는 요소를 캡처하세요.'
 
-    btnPrompt.disabled = !hasCap && !hasLoadedPack
-    btnJson.disabled = !hasCap && !hasLoadedPack
-    btnCopyAll.disabled = !hasCap && !hasLoadedPack
+    const canCopy = hasCap || hasLoadedPack
+    summaryCard.classList.toggle(
+      'context-pack-panel__summary--inactive',
+      !canCopy
+    )
+    if (canCopy) {
+      summaryCard.removeAttribute('aria-disabled')
+    } else {
+      summaryCard.setAttribute('aria-disabled', 'true')
+    }
+
+    const pack = tryBuildPack()
+    const userNote = intentInput.value.trim() || undefined
+    if (pack) {
+      const summary = buildPackSummary(pack, currentTemplate, {
+        hasImage: hasCap,
+        userNote
+      })
+      itemTemplate.valueEl.textContent = summary.templateLabel
+      itemPins.valueEl.textContent = `${summary.pinCount}개(버그 ${summary.bugPinCount}개)`
+      itemImage.valueEl.textContent = summary.hasImage ? '있음' : '없음'
+      itemNote.valueEl.textContent = summary.hasUserNote ? '있음' : '없음'
+    } else {
+      itemTemplate.valueEl.textContent = packTemplateLabel(currentTemplate)
+      itemPins.valueEl.textContent = '0개(버그 0개)'
+      itemImage.valueEl.textContent = '없음'
+      itemNote.valueEl.textContent = userNote ? '있음' : '없음'
+    }
+
+    btnPrompt.disabled = !canCopy
+    btnJson.disabled = !canCopy
+    btnCopyAll.disabled = !canCopy
+    if (rawDetails.open) refreshRawText()
   }
 
   const resetPack = (): void => {
@@ -408,6 +481,11 @@ export function mountContextPackPanel(
     })
   }
 
+  const refreshRawText = (): void => {
+    const pack = tryBuildPack()
+    rawText.textContent = pack ? buildPromptText(pack) : ''
+  }
+
   const copyPack = async (
     buildText: (pack: ContextPack) => string,
     successMessage: string
@@ -420,6 +498,7 @@ export function mountContextPackPanel(
     try {
       await navigator.clipboard.writeText(buildText(pack))
       await saveHistory(pack)
+      refreshRawText()
       deps.showToast(successMessage, 'info')
     } catch (e) {
       deps.showToast(toKoreanErrorMessage(e), 'error')
@@ -459,7 +538,7 @@ export function mountContextPackPanel(
   })
 
   const copyPromptAction = (): Promise<void> =>
-    copyPack(buildPromptText, 'AI 프롬프트를 복사했습니다.')
+    copyPack(buildPromptText, COPY_NEXT_ACTION)
 
   btnPrompt.addEventListener('click', () => {
     void copyPromptAction()
@@ -477,8 +556,16 @@ export function mountContextPackPanel(
           null,
           2
         )}`,
-      '프롬프트와 JSON을 복사했습니다.'
+      COPY_NEXT_ACTION
     )
+  })
+
+  rawDetails.addEventListener('toggle', () => {
+    if (rawDetails.open) refreshRawText()
+  })
+
+  intentInput.addEventListener('input', () => {
+    sync()
   })
 
   templateSelect.addEventListener('change', () => {
@@ -486,6 +573,7 @@ export function mountContextPackPanel(
       currentTemplate = templateSelect.value
       mode = templateToMode(currentTemplate)
       void setStorageItem(TEMPLATE_STORAGE_KEY, currentTemplate)
+      sync()
     }
   })
 
