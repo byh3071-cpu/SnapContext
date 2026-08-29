@@ -1,4 +1,4 @@
-﻿---
+---
 id: adr-005-full-page-capture
 date: 2026-05-10
 tags: [adr, capture, full-page, service-worker, offscreen-canvas]

@@ -1,4 +1,4 @@
-﻿---
+---
 id: adr-001-sidepanel-over-popup
 date: 2026-05-07
 tags: [extension, mv3, ux]

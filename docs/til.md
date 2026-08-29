@@ -1,4 +1,4 @@
-﻿---
+---
 id: til-root
 date: 2026-05-07
 tags: [til]

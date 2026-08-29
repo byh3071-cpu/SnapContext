@@ -15,3 +15,5 @@
 [스코프 밖 발견] docs/GLOSSARY.md 금지어 열·검사 명령에 의도적 "캡쳐" 잔존(게이트 ③은 GLOSSARY.md 제외 — GLOSSARY 자체 rg 명령과 동일) · CONTEXT-PACK-SPEC 마크다운 Export 절 "주석"/"스크린샷" 미수정(게이트 대상 아님) · ContextPackPanel 425행 힌트는 T1에서 이미 반영됨
 [가정·미해결] 티켓 App.ts 541행 표기는 코드 주석 위치이며 실제 UI 문자열은 562·591행
 [다음] 없음
+
+[정정 2026-08-30] 실측 56건/12파일(PRD.MD 11 포함) — critic

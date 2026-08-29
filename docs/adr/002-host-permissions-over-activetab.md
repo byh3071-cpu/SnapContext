@@ -1,4 +1,4 @@
-﻿---
+---
 
 ## id: adr-002-host-permissions-over-activetab
 date: 2026-05-07

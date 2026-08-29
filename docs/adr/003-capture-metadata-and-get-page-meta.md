@@ -1,4 +1,4 @@
-﻿---
+---
 
 ## id: adr-003-capture-metadata-get-page-meta
 date: 2026-05-07

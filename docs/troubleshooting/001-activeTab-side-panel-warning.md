@@ -1,4 +1,4 @@
-﻿---
+---
 id: troubleshoot-001-activetab-side-panel
 date: 2026-05-07
 tags: [troubleshooting, activeTab, sidePanel, permissions]

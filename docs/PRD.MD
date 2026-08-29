@@ -1,4 +1,4 @@
-﻿# SnapContext — Product Requirements Document
+# SnapContext — Product Requirements Document
 
 ## 한 줄 정의
 웹에서 발견한 UI 문제/에러/레퍼런스를 딸깍으로 캡처하고, AI가 바로 이해하는 Context Pack으로 변환하는 브라우저 확장 프로그램.

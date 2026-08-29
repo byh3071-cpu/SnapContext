@@ -1,4 +1,4 @@
-﻿---
+---
 id: architecture-snapcontext
 date: 2026-05-07
 tags: [architecture, messaging, context-pack]
