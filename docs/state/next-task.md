@@ -69,3 +69,16 @@ TASK: 0.4.6 프롬프트 UX 다듬기 — Fable 지휘 · Claude 하위모델 + 
   dogfood_ledger: docs/dogfood/2026-08-29-orchestration-ledger.md
 ```
 
+## 2026-08-30 — 0.4.6 W1 PR 대기 · W2 수정 라운드
+
+```text
+TASK: 0.4.6 — W1 머지 결재 / W2-fix / W3 착수
+  status: BLOCKED_ON_HUMAN (PR #25 머지) + IN_PROGRESS (W2-fix, Cursor grok, 046-w2)
+  pr1: https://github.com/byh3071-cpu/snapcontext/pull/25  (046-w1 → master, critic PASS)
+  w2: 046-w2 = 046-w1 + T1/T3a + T2 + T6/T3b (170 passed) → critic BLOCKER 1(E2E 접힘)·MAJOR 1(저장 문구) → W2-fix 티켓 진행
+  w3_next: 046-w2 위에서 T4b(용어 전수·버전 4값 0.4.6·게이트) — `worktree create --agent cursor` 방식
+  worktrees: master · 046-w1 · 046-w2 (끝난 워커 폴더 6개 제거, 브랜치 보존)
+  adapter: manual-send (Orca dispatch 층 stall — 원장 DF-14), 완료 채널 = status 메일 + report.md 커밋
+  ledger: docs/dogfood/2026-08-29-orchestration-ledger.md (DF-01~45)
+```
+
