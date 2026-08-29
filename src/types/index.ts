@@ -122,6 +122,8 @@ export interface ContextPack {
 
     memo: string | null
 
+    kind?: 'bug' | 'ref'
+
   }>
 
   debugLogs: DebugLogEntry[]
@@ -286,6 +288,8 @@ export type PinItem = {
   y: number
 
   memo: string
+
+  kind?: 'bug' | 'ref'
 
 }
 

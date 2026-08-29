@@ -912,6 +912,14 @@ kbd,
 .pin-badge:hover {
   background: #000;
 }
+.pin-badge--bug {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.pin-badge--bug:hover {
+  background: var(--paper-2);
+}
 .pin-badge--active {
   outline: none;
   box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);
@@ -1062,9 +1070,29 @@ kbd,
 }
 .pin-memo__field {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: var(--s-2);
   align-items: start;
+}
+.pin-memo__kind {
+  height: 30px;
+  margin-top: 2px;
+  padding: 0 var(--s-2);
+  font-family: var(--font-sans);
+  font-size: var(--t-meta);
+  font-weight: 700;
+  letter-spacing: 0;
+  word-break: keep-all;
+  white-space: nowrap;
+  border-radius: var(--r-0);
+  border: var(--rule-mid) solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+.pin-memo__kind[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--paper);
 }
 .pin-memo__input {
   width: 100%;
