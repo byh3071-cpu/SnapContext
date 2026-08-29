@@ -76,6 +76,7 @@ status: open
 | DF-56 | E2E 자산 2차 파손 (DF-42 재발) | `tests/e2e/dogfood/qa-043.mjs`가 옛 토스트 문구를 기다려 QA⑤ 거짓 판정 — W2 때 `tests/e2e/*.mjs`만 grep해 `dogfood/` 하위를 놓침 | 수동 QA 스크립트 신뢰 붕괴 | W3-fix B2 | DoD 그물을 `tests/e2e/**`로(하위 폴더 포함) | 상 |
 | DF-57 | 스토어 킷 stale (범위 밖·tag 차단) | `scripts/generate-store-screenshots.mjs`·`docs/store/listing-0.2.0-draft.md`가 0.4.2에서 폐지된 "익명 공유·공유 링크·7일 업로드"를 광고(critic) — 0.4.6 무관, 재심사 준비 때 필수 | 재심사 제출물 허위 | TASKS P0(tag 전) | 재심사 준비 티켓 신설 | 상 |
 | DF-58 | 워커 보고 규약 v2 첫 적용 (긍정) | W3-fix 워커(grok)가 신설 `[근거 불일치]`에 **5건**을 적음: 티켓의 제외 경로 부족(로드맵·ui-audit 잔존) · `스냅` vs `스냅샷` 불일치 · "md 12개" glob 14 중 BOM 12 · waitToast 마침표 · T4b 수치 오류 — 전부 원문 유지 + 기록. 티켓에 없는 게이트 제외 2경로를 스크립트에만 넣고 `[다음]`으로 결정 요청 | — | — | 규약 v2 확정 근거. 지휘자 결정: 제외 2경로(과거 상태 스냅샷 문서) 승인, 티켓 원문 갱신은 생략 | (칭찬) |
+| DF-59 | W3 수정 루프·critic 총계 | W3 critic FAIL(B2·M4) → W3-fix 19분(grok) → 재검증 PASS·MAJOR 0(뮤테이션 23종 중 22종 검출). **critic 누적 6회차·405k 토큰·약 75분**으로 세 웨이브 모두 "게이트 초록 → critic FAIL → 수정 → PASS" 패턴. 게이트가 못 잡은 결함 총 15건(W1 5·W2 2·W3 6·기타 2) | — | — | 적대 검증은 선택이 아니라 DoD 필수 항목(PAT 후보) | (기록) |
 | DF-22 | vhk `receipt --mark-start` | 실행이 tracked `.vhk/.gitignore`를 수정 → 직후 `mission check`가 scope 밖 변경 경고(노이즈) | 경고 오독 | 무시·커밋 | receipt가 만지는 파일은 mission scope 기본 포함 또는 untracked로 | 하 |
 
 ## 정상 동작 확인(칭찬 목록 — 보고서 균형용)

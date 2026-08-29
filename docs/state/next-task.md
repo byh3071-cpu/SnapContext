@@ -92,3 +92,16 @@ TASK: 0.4.6 — PR #25·#26 머지 결재 / W3 T4b 진행
   w3_next: T4b 완료 → 046-w3 통합 재측정(+E2E 6종) → critic → PR #3 → 요한 수동 QA·tag v0.4.6 → 보고서 3종
 ```
 
+## 2026-08-30 (3) — 0.4.6 구현·검증 완료, 사람 게이트만 잔여
+
+```text
+TASK: 0.4.6 마감 — PR 3개 머지 → 수동 QA → tag
+  status: BLOCKED_ON_HUMAN
+  prs: #25(W1) → #26(W2) → #27(W3)  (전부 critic PASS·MAJOR 0, 스택 순서대로 머지)
+  evidence: vitest 173 passed · tsc 0 · build OK(0.4.6) · vhk check --goal 6 ✓ · BOM 0 · E2E 6/6 (upload-share는 기준선부터 실패=환경 의존)
+  after_merge: pnpm dogfood:up 첫 15초 흐름(캡처→핀→요약 카드→복사→안내) + 실패 배지 재현 → tag v0.4.6 → vhk goal done --id 6
+  carry_over: 재심사 준비(스토어 킷 재작성 + docs/store 게이트 제외 해제) — TASKS P0 · 0.4.7 후보: upload-share E2E 재배선·CIM flaky·UI 배선 Playwright 1건·SPEC JSON 예시 드리프트
+  reports: docs/log/2026-08-30-0.4.6-orchestration-worklog.md · docs/dogfood/2026-08-30-report-1-ops-manual-feedback.md · docs/dogfood/2026-08-30-report-3-worker-report-contract.md
+  worktrees: master · 046-w1 · 046-w2 · 046-w3 (머지 후 제거)
+```
+

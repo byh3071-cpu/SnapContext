@@ -3,7 +3,7 @@ vhk_format: 1
 type: goal
 id: 6
 title: 0.4.6 — 프롬프트 UX 다듬기 (payload 숨기기·다이어트·안내·용어·핀 1비트·저장 배지)
-status: NOT_STARTED
+status: IN_PROGRESS
 priority: P1
 version: v0.4.6
 ---
