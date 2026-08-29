@@ -1,7 +1,7 @@
 export type TemplateContext = Record<string, unknown>
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/
-const IF_BLOCK_RE = /\{\{#if\s+([\w.]+)\}\}([\s\S]*?)\{\{\/if\}\}/g
+const INNERMOST_IF_RE = /\{\{#if\s+([\w.]+)\}\}((?:(?!\{\{#if\b)[\s\S])*?)\{\{\/if\}\}/g
 const EACH_BLOCK_RE = /\{\{#each\s+([\w.]+)\}\}([\s\S]*?)\{\{\/each\}\}/g
 const VAR_RE = /\{\{\s*([\w.]+)\s*\}\}/g
 
@@ -37,13 +37,22 @@ function renderVars(template: string, ctx: unknown): string {
   })
 }
 
-export function renderTemplate(template: string, ctx: TemplateContext): string {
-  let out = template.replace(FRONTMATTER_RE, '')
-
-  out = out.replace(IF_BLOCK_RE, (_match, path: string, body: string) => {
+function renderInnermostIfs(template: string, ctx: unknown): string {
+  const re = new RegExp(INNERMOST_IF_RE.source, 'g')
+  return template.replace(re, (_match, path: string, body: string) => {
     if (!isTruthy(lookup(ctx, path))) return ''
     return trimSurroundingNewline(body)
   })
+}
+
+export function renderTemplate(template: string, ctx: TemplateContext): string {
+  let out = template.replace(FRONTMATTER_RE, '')
+
+  let next = renderInnermostIfs(out, ctx)
+  while (next !== out) {
+    out = next
+    next = renderInnermostIfs(out, ctx)
+  }
 
   out = out.replace(EACH_BLOCK_RE, (_match, path: string, body: string) => {
     const arr = lookup(ctx, path)

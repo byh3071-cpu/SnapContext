@@ -5,6 +5,7 @@ import {
   type GenerateContextPackInput
 } from '../src/context-pack/generator'
 import { buildTemplatePrompt } from '../src/context-pack/prompt-builder'
+import { renderTemplate } from '../src/context-pack/template-engine'
 
 const baseInput = (): GenerateContextPackInput => ({
   imageBase64: 'data:image/png;base64,AAAA',
@@ -36,11 +37,24 @@ describe('context pack', () => {
   })
 })
 
+describe('renderTemplate nested blocks', () => {
+  it('renders {{#each}} inside {{#if}} inside {{#if}}', () => {
+    const md = renderTemplate(
+      '{{#if pins}}\n## 핀 메모\n{{#if lite}}{{#each pins}}- {{memo}}{{/each}}{{/if}}\n{{#if debug}}DEBUG{{/if}}\n{{/if}}\n',
+      { pins: [{ memo: 'hello' }], lite: true, debug: false }
+    )
+    expect(md).toContain('## 핀 메모')
+    expect(md).toContain('- hello')
+    expect(md).not.toContain('DEBUG')
+    expect(md).not.toContain('{{')
+  })
+})
+
 describe('buildTemplatePrompt', () => {
-  it('renders the bug template with pins and userAgent', () => {
+  it('includes UA, viewport, and pin coords when bug template has a bug pin', () => {
     const pack = generateContextPack({
       ...baseInput(),
-      pins: [{ id: 1, x: 10.25, y: 20.5, memo: 'button is broken' }]
+      pins: [{ id: 1, x: 10.25, y: 20.5, memo: 'button is broken', kind: 'bug' }]
     })
     const md = buildTemplatePrompt(pack, 'bug', { userAgent: 'Test UA' })
 
@@ -51,7 +65,72 @@ describe('buildTemplatePrompt', () => {
     expect(md).toContain('button is broken')
     expect(md).toContain('10.3%')
     expect(md).toContain('20.5%')
+    expect(md).toContain('캡처 방식')
+    expect(md).toContain('## 환경')
+    expect(md).toContain('[버그]')
     expect(md).not.toContain('## 추가 메모')
+  })
+
+  it('omits UA, viewport, and coords when bug template has only ref pins', () => {
+    const pack = generateContextPack({
+      ...baseInput(),
+      pins: [{ id: 1, x: 10.25, y: 20.5, memo: 'look here' }]
+    })
+    const md = buildTemplatePrompt(pack, 'bug', { userAgent: 'Test UA' })
+
+    expect(md).toContain('## 핀 메모')
+    expect(md).toContain('look here')
+    expect(md).not.toContain('Test UA')
+    expect(md).not.toContain('1280×720')
+    expect(md).not.toContain('10.3%')
+    expect(md).not.toContain('20.5%')
+    expect(md).not.toContain('## 환경')
+    expect(md).not.toContain('캡처 방식')
+    expect(md).not.toContain('[버그]')
+  })
+
+  it('omits UA and viewport on refactor/reference even with a bug pin', () => {
+    const pack = generateContextPack({
+      ...baseInput(),
+      pins: [{ id: 1, x: 10.25, y: 20.5, memo: 'improve this', kind: 'bug' }]
+    })
+    for (const template of ['refactor', 'reference'] as const) {
+      const md = buildTemplatePrompt(pack, template, { userAgent: 'Test UA' })
+      expect(md, `template=${template}`).toContain('improve this')
+      expect(md, `template=${template}`).not.toContain('Test UA')
+      expect(md, `template=${template}`).not.toContain('1280×720')
+      expect(md, `template=${template}`).not.toContain('## 환경')
+    }
+  })
+
+  it('places the pin memo section before the request section', () => {
+    const pack = generateContextPack({
+      ...baseInput(),
+      pins: [{ id: 1, x: 10, y: 20, memo: 'click target', kind: 'bug' }]
+    })
+    const md = buildTemplatePrompt(pack, 'bug', { userAgent: 'Test UA' })
+    const pinIdx = md.indexOf('## 핀 메모')
+    const reqIdx = md.indexOf('## 요청')
+    expect(pinIdx).toBeGreaterThan(-1)
+    expect(reqIdx).toBeGreaterThan(-1)
+    expect(pinIdx).toBeLessThan(reqIdx)
+  })
+
+  it('has no 4-item numbered instructions and no forbidden glossary terms', () => {
+    const pack = generateContextPack({
+      ...baseInput(),
+      pins: [{ id: 1, x: 10, y: 20, memo: 'note', kind: 'bug' }]
+    })
+    for (const template of ['bug', 'refactor', 'reference'] as const) {
+      const md = buildTemplatePrompt(pack, template, { userAgent: 'Test UA' })
+      expect(md, `template=${template}`).not.toMatch(/\n1\. /)
+      expect(md, `template=${template}`).not.toMatch(/\n2\. /)
+      expect(md, `template=${template}`).not.toMatch(/\n3\. /)
+      expect(md, `template=${template}`).not.toMatch(/\n4\. /)
+      expect(md, `template=${template}`).not.toContain('핀 주석')
+      expect(md, `template=${template}`).not.toContain('캡쳐')
+      expect(md, `template=${template}`).not.toContain('스크린샷')
+    }
   })
 
   it('emits the userNote section only when userNote is set', () => {
@@ -74,17 +153,15 @@ describe('buildTemplatePrompt', () => {
 
     expect(md).toContain('# 📐 레퍼런스 참고 구현')
     expect(md).toContain('Example')
-    // pins 가 비어 있으면 #each 블록은 통째로 제거되어 핀 본문 줄이 없어야 함
     expect(md).not.toMatch(/^- \*\*핀 \d/m)
-    // pins 가 비어 있으면 "## 핀 주석" 헤더 자체도 출력되지 않아야 함
-    expect(md).not.toContain('## 핀 주석')
+    expect(md).not.toContain('## 핀 메모')
   })
 
   it('omits the pin section header for all 3 templates when no pins', () => {
     const pack = generateContextPack(baseInput())
     for (const template of ['bug', 'refactor', 'reference'] as const) {
       const md = buildTemplatePrompt(pack, template)
-      expect(md, `template=${template}`).not.toContain('## 핀 주석')
+      expect(md, `template=${template}`).not.toContain('## 핀 메모')
     }
   })
 
@@ -94,7 +171,7 @@ describe('buildTemplatePrompt', () => {
       pins: [{ id: 1, x: 10, y: 20, memo: 'click target' }]
     })
     const md = buildTemplatePrompt(pack, 'bug')
-    expect(md).toContain('## 핀 주석')
+    expect(md).toContain('## 핀 메모')
     expect(md).toContain('click target')
   })
 
