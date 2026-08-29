@@ -31,7 +31,7 @@ Dev Log 주입 시 아래 정보 사용:
 - DB: 바이브코딩 Dev Log
 - 필수 속성: 이름(title), 실행일(date), 프로젝트(select:SnapContext),
   유형(select), 결과(select), 교훈(text), 메모(text),
-  관련 파일(text), 역전파 상태(select:미반영), 태그(multi_select)
+  관련 파일(text), 역전파 상태(select:미처리), 태그(multi_select)
 - SoT Key 형식: [날짜] 유형-번호: 제목
 
 ## ⚡ SnapContext 고유 주의사항
