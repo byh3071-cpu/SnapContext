@@ -1,4 +1,4 @@
----
+﻿---
 id: changelog-root
 date: 2026-05-07
 tags: [changelog]
@@ -6,10 +6,15 @@ tags: [changelog]
 
 # Changelog
 
-## 0.4.6 — 진행 중 (ext-only)
+## 0.4.6 — 구현 완료 · 수동 QA·tag 대기 (ext-only)
 
-- 타입: `PinItem.kind?`·`ContextPack.annotations[].kind?` 추가(하위호환, 기본 ref).
-- 타입: `CaptureHistoryItem.saveStatus?`·`savedCaptureId?`·`saveError?` 추가(하위호환).
+- T1: 컨텍스트 팩 요약 카드로 복사 전 내용을 확인하고, 원문은 접어둔다.
+- T2: AI 프롬프트가 짧아지고, 버그 템플릿·버그 핀일 때만 상세 정보가 포함된다.
+- T3: 복사·저장 직후 다음에 할 일을 한 줄로 안내한다.
+- T4: 용어를 통일한다(캡처·핀 메모·그리기 도구·컨텍스트 팩·내 AI에 저장).
+- T5: 핀마다 버그/참고 의도를 표시하고 토글로 바꿀 수 있다.
+- T6: 내 AI에 저장 결과를 저장됨/실패 배지로 보여준다.
+- 용어 사전 `docs/GLOSSARY.md` 신설, 확장 버전 4값 0.4.6. worker serverInfo 무변경(ADR-014).
 
 ## 0.4.4 — 구현 완료 · 적대 검증·배포·tag 대기 (worker-only)
 
@@ -161,13 +166,13 @@ tags: [changelog]
 ### 신규 기능
 
 - **프로그레시브 공개 UI:** 캡처 전엔 핀 메모 / AI 디버그 팩 섹션 숨김. 첫 캡처 후 노출.
-- **캡쳐 버튼 2×2 그리드:** 화면/문서/요소/전체 캡쳐 4개를 한눈에.
-- **전체 캡쳐 (Full Page Capture, `Alt+Shift+G`):** 스크롤 전체 페이지를 한 장 PNG 로 stitch. 최대 15000px, 초과 시 truncated 토스트.
+- **캡처 버튼 2×2 그리드:** 화면/문서/요소/전체 캡처 4개를 한눈에.
+- **전체 캡처 (Full Page Capture, `Alt+Shift+G`):** 스크롤 전체 페이지를 한 장 PNG 로 stitch. 최대 15000px, 초과 시 truncated 토스트.
 - **이미지 확대 라이트박스 (🔍):** 미리보기 우하단 버튼 → 풀스크린 원본 보기 + 마우스 휠 줌 (0.5×~16×) + 드래그 팬 + 핀 추가/삭제.
 
 ### 버그 수정 및 UX 개선
 
-- **단축키 충돌:** `Alt+Shift+D` 가 Whale 의 다크모드 토글과 충돌하여 캡처 안 되던 문제. 문서 캡쳐 단축키를 `Alt+Shift+M` 으로 변경.
+- **단축키 충돌:** `Alt+Shift+D` 가 Whale 의 다크모드 토글과 충돌하여 캡처 안 되던 문제. 문서 캡처 단축키를 `Alt+Shift+M` 으로 변경.
 - **핀 메모 입력 불가:** textarea focus 이벤트가 풀 재렌더를 트리거해 textarea 가 destroy/재생성되며 입력이 사라지던 버그. "활성 핀 변경" 과 "구조 변경" 분리.
 - **라이트박스 핀 클릭 시 새 핀 추가:** `setPointerCapture` 로 인해 `ev.target` 이 viewport 로 고정. `document.elementFromPoint` 로 실제 요소 조회.
 - **라이트박스 확대 시 텍스트 ghosting:** `transform: scale()` GPU 합성이 image-rendering 힌트 무시. **줌을 img.width 직접 변경 + native scroll pan 으로 리팩토링**해 GPU 합성 우회.
@@ -175,7 +180,7 @@ tags: [changelog]
 - **히스토리 로드 후 추가 핀이 프롬프트 누락:** `tryBuildPack` 의 `loadedPack` short-circuit 제거. 라이브 캡처 입력 있으면 항상 fresh 생성.
 - **viewport 0×0 / UA 공란:** YouTube 등 SPA 에서 콘텐츠 스크립트 응답 실패 시 `chrome.scripting.executeScript` 인라인 폴백 추가.
 - **빈 핀 섹션 헤더 출력:** 핀 0개일 때 `## 핀 주석` 만 떠 있던 문제. 3개 템플릿 모두 `{{#if pins}}` 로 감쌈.
-- **캡쳐 라벨:** 전체 캡쳐가 "문서 캡쳐" 로 표시되던 문제. `CaptureType` 에 `'full-page'` 추가, 모든 분기 보강.
+- **캡처 라벨:** 전체 캡처가 "문서 캡처" 로 표시되던 문제. `CaptureType` 에 `'full-page'` 추가, 모든 분기 보강.
 - **두 번 클릭 삭제:** 핀 배지 첫 클릭 = 선택, 같은 핀 두 번째 클릭 = 삭제 토글. `lastClickedPinId` 상태로 auto-active 와 user-clicked 구분.
 - **앱 아이콘:** 마스터 PNG 의 네이비 배경을 픽셀 임계치로 투명화, 코랄 심볼만 96% 채움 → 툴바에서 시각적 크기 향상.
 - **한국어화 마무리:** "Capture history", "Settings / Help: Shortcuts", "Saved Context Pack..." 등 영문 잔재 모두 한국어로.
@@ -191,7 +196,7 @@ tags: [changelog]
 ### 신규 기능
 
 - **PNG 복사 / 저장 (ImageActions):** 핀 주석 포함 PNG 를 클립보드 복사 또는 파일 저장.
-- **캡쳐 히스토리:** 최근 50개 캡쳐 자동 저장 + 썸네일 리스트 + 스와이프/X 삭제 + 클릭 시 이미지·핀 복원.
+- **캡처 히스토리:** 최근 50개 캡처 자동 저장 + 썸네일 리스트 + 스와이프/X 삭제 + 클릭 시 이미지·핀 복원.
 - **프롬프트 템플릿 3종:** 🐛 버그 리포트 · 🔧 리팩토링 · 📐 레퍼런스. Mustache-lite 엔진 (`{{var}}`, `{{#if}}`, `{{#each}}`) 으로 렌더. 선택 상태 `chrome.storage.local` 영속.
 - **키보드 단축키:** `Alt+Shift+V` 화면, `Alt+Shift+E` 요소, `Alt+Shift+D` 문서. (PNG 복사는 단축키 슬롯 4개 제한으로 수동 바인딩.) `Alt+Shift+D` 는 v0.1.2 에서 Whale 충돌로 `Alt+Shift+M` 으로 변경됨.
 
@@ -206,15 +211,15 @@ tags: [changelog]
 ### 제품
 
 - Manifest V3 · Vite · `@crxjs/vite-plugin` · TypeScript strict · Side Panel UI.
-- **캡쳐:** Visible / Element(오버레이 선택·crop) / Document(본문 영역 탐색·crop).
-- **미리보기:** 빈 상태 placeholder, 캡쳐 이미지 표시.
+- **캡처:** Visible / Element(오버레이 선택·crop) / Document(본문 영역 탐색·crop).
+- **미리보기:** 빈 상태 placeholder, 캡처 이미지 표시.
 - **핀 주석:** 번호 핀·메모 목록·삭제·재번호·이미지 좌표(%).
 - **Context Pack:** 생성(`generator`)·AI 프롬프트 Markdown(`buildPrompt`)·JSON 클립보드·핀 포함 PNG 다운로드(`annotated-image` + `downloads`).
 - **메타데이터:** `CAPTURE_RESULT`에 URL·title·viewport·UA·이미지 크기; Visible은 `GET_PAGE_META` / Element·Document는 메시지에 viewport·UA 포함.
 
 ### 인프라·권한
 
-- `activeTab` 제거, `host_permissions: <all_urls>` 기반 캡쳐.
+- `activeTab` 제거, `host_permissions: <all_urls>` 기반 캡처.
 - `permissions`: sidePanel, storage, scripting, downloads, tabs, windows 등.
 
 ### 문서
