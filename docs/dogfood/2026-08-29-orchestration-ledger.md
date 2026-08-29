@@ -28,6 +28,20 @@ status: open
 | DF-12 | yohan-agent-kit `agent-team-operations` 운영 매뉴얼 | workstream 카드(YAML)를 "owner project가 저장"하라는데 저장 위치·파일명 규약이 없음 | 매 프로젝트 임의 위치 | `goals/6-046-ux-polish-plan.md` frontmatter에 흡수 | 규약 1줄 추가(예: `goals/<id>-*.plan.md` 또는 `docs/state/workstream.yaml`) | 하 |
 | DF-13 | Claude Code 서브에이전트 모델 배치 | `claude-code-guide`·`yohan-core:explorer` 호출 시 model 파라미터를 안 넘겼으나 정의 파일 별칭(haiku)이 안전망으로 작동(로스터 `model_alias_map.spawn_rule` 의도대로) — **정상**. 단 `claude-code-guide`는 정의 파일 model 미확인(64k 토큰 소모) | 비용 | — | 빌트인 에이전트도 로스터 role_defaults에 등재 | 하 |
 
+## 발견 (Wave 1-0 — Orca 스모크, 14:00~14:20)
+
+| ID | 대상 정본 | 증상(실측) | 영향 | 우회 | 개선안 | 심각도 |
+|---|---|---|---|---|---|---|
+| DF-14 | Orca 1.4.188 orchestration (Windows + Cursor) | `worker-start --agent cursor`(3회)·`worker-start --terminal`(선기동 idle 에이전트, 페이스트 1.4초 뒤 엔터)·`dispatch --inject`(1회) **전부 6~11초 뒤 `agent_prompt_stalled`** → dispatch failed·capability 즉시 revoke → 워커의 heartbeat·worker_done·ask·escalation 전부 거절. 엔터 타이밍과 무관(선기동+1.4초 엔터에서도 재현) → [추론] Orca가 Cursor의 "프롬프트 접수" 훅 신호를 못 받음(#16095 계열, Claude뿐 아니라 Cursor도). 3회 실패 후 태스크 회로차단(`failed`) | **Orca dispatch 층 사용 불가** — supervised worker_done 경로 폐쇄 | 워크트리·터미널은 Orca, 스펙은 `terminal send` 직접 주입(manual-send 어댑터), 완료 신호는 워커의 **`status` 메일(제목 `DONE:<task>`)** + 브랜치 커밋 + 지휘자 재측정. task 상태는 `task-update`로 정직하게 override(result에 adapter 기록) | Orca: Cursor 훅 접수 판정 수정 또는 stall 판정 시간 옵션 · 로스터 `orca_patterns`에 "inject 불가 시 manual-send + status 완료 채널" 계약 명문화 | 상 |
+| DF-15 | Orca `worker-stop` | 이미 failed·settled dispatch에 `worker-stop` → `processAction: none`, **에이전트 터미널이 살아 stale 스펙을 계속 실행**. 이어서 `worker-start` 재시도가 같은 worktree에 2번째 에이전트 터미널 생성 → 한 worktree 2 writer 상태 발생(실측) | 스코프 충돌 위험·토큰 낭비 | `terminal close`로 수동 정리 | failed dispatch의 residual 터미널은 `worker-start --retry-of` 전에 자동 close 또는 경고 | 중 |
+| DF-16 | Orca `worker-start --terminal` | `--worktree` 생략 시 지휘자 현재 폴더(master)로 기본 → `terminal_worktree_mismatch`. 메시지는 명확 | 재시도 1회 | `--worktree id:…` 명시 | 터미널에서 worktree를 역추적해 기본값 채우기 | 하 |
+| DF-17 | Cursor Agent CLI | 같은 세션 안에서 자동 업데이트: 1번째 워커 `v2026.08.11`, 2번째부터 `v2026.08.25-3e8eec8` | 한 라운드 안 버전 드리프트, 재현성 저하 | — | 로스터 `refresh_slugs_before_dispatch`에 CLI 버전 고정/기록 추가 | 하 |
+| DF-18 | 지휘자(나) 폴링 결함 | 재시도 시 `terminal list` 항목을 새 터미널로 오인 → **구 터미널에 엔터 2회** → stale 워커가 실행됨. 원인: 새 핸들은 worker-start 결과(effects)에만 있고 블로킹이라 사전 확보 불가 | 잘못된 워커 기동 | 알려진 핸들 제외 집합으로 폴링 | worker-start에 핸들 즉시 반환(no-wait) 옵션 | 중 |
+| DF-19 | Orca `terminal read` 신호 해석 | `[Pasted text #1 +N lines]` 줄은 제출 후에도 스크롤백에 남아 "미제출" 신호로 못 씀(2차에서 워커 실행 중에도 표시). `--screen`(현재 프레임) 읽기가 입력창 상태 판정에 맞을 듯 | 자동 엔터 루프 오판(엔터 17회 전송) | 마지막 8줄만 보고 1회만 전송 | 플레이북 FRAGILITY "맨 엔터" 절차에 `--screen` 사용 명시 | 하 |
+| DF-20 | 워커 보고 계약 (긍정) | Cursor grok 4.6 워커 4명 전원: 라우팅 선언(카드 읽음)·`.vhk/HARD_STOP` 확인·지정 명령만 실행·**보고 형식 7항 그대로 준수**·거절 시 ask→escalation→`status` 메일 순으로 에스컬레이션 후 `check --wait`로 지휘자 대기 | — | — | 부록 D 계약은 실효. `status` 메일이 capability 없이 도달 → 완료 채널로 채택 | (칭찬) |
+| DF-21 | yohan-core PreToolUse 보안 가드 | `vhk mission set --forbidden` 인자에 환경변수 파일 글로브(점env 패턴)가 들어간 명령이 통째로 차단 — 파일 접근이 아니라 **글로브 문자열 인자**인데 명령 전체 거부(계획·mission 갱신 4줄이 함께 죽음). 이 원장 항목을 bash heredoc으로 쓸 때도 같은 이유로 차단됨(편집 도구로 우회) | 명령 분할·재실행 2회 | forbidden은 python으로 기존 목록에 append | 가드가 Read/cat/Edit 등 접근 동사와 결합될 때만 발동하도록 정밀화, 차단 시 어느 토큰이 걸렸는지 표시 | 중 |
+| DF-22 | vhk `receipt --mark-start` | 실행이 tracked `.vhk/.gitignore`를 수정 → 직후 `mission check`가 scope 밖 변경 경고(노이즈) | 경고 오독 | 무시·커밋 | receipt가 만지는 파일은 mission scope 기본 포함 또는 untracked로 | 하 |
+
 ## 정상 동작 확인(칭찬 목록 — 보고서 균형용)
 
 - `orca status --json` runtime/graph ready · `orchestration run-list` RPC 정상 · `worktree current`로 repoId 즉시 확보.

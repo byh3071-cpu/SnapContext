@@ -3,7 +3,9 @@ vhk_format: 1
 type: plan
 goal: 6
 title: 0.4.6 구현 계획 영수증 — Fable 지휘 · Claude 하위모델 + Cursor 모델 오케스트레이션
-status: PENDING_APPROVAL
+status: APPROVED
+approved_at: 2026-08-29
+decisions: "R1 승인 · R2=A(M7·L12만 편승: M7→2-C, L12→2-A) · R3=A(웨이브당 1 PR)"
 date: 2026-08-29
 conductor: Claude Fable 5 (Claude Code 2.1.251, Orca 1.4.188 지휘 터미널)
 execution_provider: orca-ready
@@ -121,9 +123,9 @@ ledger: docs/dogfood/2026-08-29-orchestration-ledger.md
 
 | # | 질문 | 선택지 |
 |---|---|---|
-| **R1** | 이 계획 승인? | 승인 / 수정 지시 |
-| **R2** | 감사(08-17)에서 0.4.6으로 배치된 편승 후보 — M6 히스토리 갱신 경합 · M7 저장 착수 실패 무음(T6과 인접) · M8 확대에 금지된 확대 방식 사용 · L12 안내 문구 스크린리더 미고지(T3과 인접) · L13 미사용 스텁 3개 | **A(권고)** T3·T6 인접인 M7·L12만 편승 / B 전부 편승 / C 전부 제외 |
-| **R3** | PR 단위 | **A(권고)** 웨이브당 1 PR(머지 결재 3회) / B 티켓당 PR(6~7회) |
+| **R1** | 이 계획 승인? | ✅ 승인 (2026-08-29 "바로 실행하면 돼") |
+| **R2** | 감사(08-17)에서 0.4.6으로 배치된 편승 후보 — M6 히스토리 갱신 경합 · M7 저장 착수 실패 무음(T6과 인접) · M8 확대에 금지된 확대 방식 사용 · L12 안내 문구 스크린리더 미고지(T3과 인접) · L13 미사용 스텁 3개 | ✅ **A** — M7(저장 착수 실패 무음)→2-C 티켓에, L12(안내 aria-live)→2-A 티켓에 편승 |
+| **R3** | PR 단위 | ✅ **A** — 웨이브당 1 PR |
 | R4 | (승인 후 순차) PR #1·#2·#3 머지 · 수동 확인 · tag | 각 시점에 요청 |
 | 참고 | 범위 밖 별도 결재: `e2e-smoke.ps1` 폐기 vs 재작성 · 0.4.5 D1~D3 | 이번 세션 미포함 |
 
@@ -190,7 +192,22 @@ orca orchestration check --wait --types worker_done,escalation,question --timeou
 orca orchestration worker-release --dispatch <d> --json && orca orchestration check --ack <delivery> --json
 ```
 
-W1 스모크에서 1회 실험: `worker-start --task <t> --worktree new-child --name 046-smoke --agent cursor --model cursor-grok-4.6-high --json` — Orca가 `cursor`를 알면 이후 티켓은 이 한 줄로 단축. 결과를 원장에 기록.
+**스모크 결과(2026-08-29 14:00~14:20, 원장 DF-14~22)**: Orca는 `cursor`를 알고 grok 4.6으로 정확히 부팅하지만, `worker-start`·`dispatch --inject` 모두 6~11초 뒤 `agent_prompt_stalled`로 dispatch가 실패하고 capability가 철회된다(엔터 타이밍 무관). → **이번 세션의 실행 어댑터 = manual-send**:
+
+```text
+orca orchestration task-create --spec "<티켓 파일 경로 + 완료 조건 1줄>" --json          # Task 행(증거)은 유지
+orca worktree create --repo id:<repoId> --name <branch> --base-branch master --no-parent --json
+orca terminal create --worktree id:<repoId>::<path> --title <branch> --json                  # PowerShell 셸
+orca terminal send --terminal <h> --text "& 'C:\Users\user\AppData\Local\cursor-agent\agent.cmd' --model <model> --force --approve-mcps" --enter --json
+orca terminal wait --terminal <h> --for tui-idle --timeout-ms 90000 --json                  # 배너 "Run Everything" 확인
+orca terminal send --terminal <h> --text "<지시문: 티켓 경로·task id·run id·완료 신호 명령>" --enter --json
+orca orchestration task-update --id <task> --status dispatched --json                       # 정직한 수동 기록(adapter=manual-send)
+orca orchestration check --wait --types status --timeout-ms 900000 --json                   # 워커의 status 메일 DONE:<task> 대기
+# 완료 판정 = status 메일 + 브랜치의 report.md 커밋 + 지휘자 재측정(pnpm test/build) 3중
+orca orchestration task-update --id <task> --status completed --result '{"adapter":"manual-send",...}' --json
+```
+
+dispatch 행을 만들지 않으므로 "오케스트레이션됐다"고 주장하지 않는다 — Task·worktree·터미널·status 메일까지가 Orca 증거, 완료 권위는 지휘자 재측정.
 
 Claude 서브에이전트(Agent 도구): `yohan-core:explorer`(haiku, 정찰) · `yohan-core:critic`(opus, 검증 — 작업 폴더 경로 + `git diff master...HEAD` 범위 지정) · `yohan-core:shipper`(sonnet). model 파라미터를 로스터 별칭으로 명시해 지휘자 모델 상속을 막는다.
 
