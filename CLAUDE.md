@@ -14,8 +14,15 @@ tags: [process, documentation]
 
 - Chrome/Whale 확장 프로그램 — 화면 캡처 + AI 프롬프트 생성
 - 스택: TypeScript, Manifest V3, Chrome Extensions API
-- 현재 버전: v0.1.3 (Store Candidate)
+- 버전 SoT: `manifest.json`(확장) · worker `serverInfo`(서버) — ADR-014 2트랙. 이 문서에 버전 숫자를 박지 않는다.
 - 단축키: Alt+Shift+V(영역)/E(요소)/M(문서)/G(풀페이지)/P(프롬프트)
+
+## 🧭 현재 국면 (2026-08-29 갱신 — 최신값은 git·vhk·orca로 재측정)
+
+- 마지막 릴리즈: 0.4.4(worker, tag v0.4.4) · 확장은 0.4.3. 0.4.5 = 요한 결재 대기(`docs/PRD-0.4.5.md`). **진행 중 = 0.4.6 프롬프트 UX 다듬기(ext-only, worker 무변경)**.
+- 진입점 순서: `goals/6-046-ux-polish-plan.md`(구현 계획 영수증·승인 상태) → `docs/PRD-0.4.6.md`(스펙 SoT) → `.vhk/mission.json`(스코프 계약) → `docs/state/next-task.md`.
+- 규칙 SoT = `RULES.md`. 경로별 보조 규칙 = `.claude/rules/`(src·worker·docs 포인터 — 본문 복제 금지). 라우팅 카드 = 아래 관리형 블록(yohan-brain 전파).
+- 독푸딩 원장 = `docs/dogfood/2026-08-29-orchestration-ledger.md` — 도구·스킬·에이전트 마찰은 정본을 고치지 말고 여기에 append, 작업 종료 시 보고서로 정리.
 
 ## 🔗 Notion MCP 연동
 
