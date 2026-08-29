@@ -6,6 +6,10 @@ tags: [changelog]
 
 # Changelog
 
+## 0.4.6 — 진행 중 (ext-only)
+
+- 타입: `PinItem.kind?`·`ContextPack.annotations[].kind?` 추가(하위호환, 기본 ref).
+
 ## 0.4.4 — 구현 완료 · 적대 검증·배포·tag 대기 (worker-only)
 
 - 레거시 공개 경로 3종(`/s` 뷰어·무서명 `/i`·`POST /upload`)을 제거했다 — 메서드 무관(OPTIONS 포함) 410 Gone + `Cache-Control: no-store`. id만 알면 열리던 문이 전부 닫혔다(ADR-015 2차).

@@ -1,3 +1,4 @@
+import { pinKind } from '../../context-pack/pin-kind'
 import type { PinItem } from '../../types'
 import { swissIcon, swissPinGlyph } from '../utils/swiss-icons'
 
@@ -11,6 +12,7 @@ export function mountPinMemoList(
   host: HTMLElement,
   handlers: {
     onMemoChange: (pinId: number, memo: string) => void
+    onToggleKind: (pinId: number) => void
     onDelete: (pinId: number) => void
     onFocusPin: (pinId: number) => void
   }
@@ -74,6 +76,17 @@ export function mountPinMemoList(
       })
       ta.addEventListener('focus', () => handlers.onFocusPin(pin.id))
 
+      const isBug = pinKind(pin) === 'bug'
+      const kindBtn = document.createElement('button')
+      kindBtn.type = 'button'
+      kindBtn.className = 'pin-memo__kind'
+      kindBtn.setAttribute('aria-pressed', isBug ? 'true' : 'false')
+      kindBtn.textContent = isBug ? '버그' : '참고'
+      if (isBug) {
+        kindBtn.title = '예상과 다르게 동작해요'
+      }
+      kindBtn.addEventListener('click', () => handlers.onToggleKind(pin.id))
+
       const del = document.createElement('button')
       del.type = 'button'
       del.className = 'pin-memo__delete'
@@ -84,7 +97,7 @@ export function mountPinMemoList(
 
       const field = document.createElement('div')
       field.className = 'pin-memo__field'
-      field.append(ta, del)
+      field.append(kindBtn, ta, del)
 
       row.append(label, field)
       listRoot.appendChild(row)
