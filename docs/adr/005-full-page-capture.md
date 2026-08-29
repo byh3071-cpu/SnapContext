@@ -1,4 +1,4 @@
----
+﻿---
 id: adr-005-full-page-capture
 date: 2026-05-10
 tags: [adr, capture, full-page, service-worker, offscreen-canvas]
@@ -8,7 +8,7 @@ tags: [adr, capture, full-page, service-worker, offscreen-canvas]
 
 ## 컨텍스트
 
-기존 캡쳐 3종(visible/element/document) 은 모두 `chrome.tabs.captureVisibleTab` 한 번 호출로 끝나는 단일 프레임 캡쳐. 사용자가 긴 페이지 전체를 한 장의 이미지로 캡쳐하고 싶다는 니즈 발생.
+기존 캡처 3종(visible/element/document) 은 모두 `chrome.tabs.captureVisibleTab` 한 번 호출로 끝나는 단일 프레임 캡처. 사용자가 긴 페이지 전체를 한 장의 이미지로 캡처하고 싶다는 니즈 발생.
 
 ## 결정
 

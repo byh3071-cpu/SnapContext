@@ -1,4 +1,4 @@
----
+﻿---
 id: troubleshoot-001-activetab-side-panel
 date: 2026-05-07
 tags: [troubleshooting, activeTab, sidePanel, permissions]
@@ -18,7 +18,7 @@ tags: [troubleshooting, activeTab, sidePanel, permissions]
 
 ## 해결
 
-- manifest에서 **`activeTab`을 제거**하고, 캡쳐에 필요한 접근은 **`host_permissions`(예: `<all_urls>`)** 로 충당한다.
+- manifest에서 **`activeTab`을 제거**하고, 캡처에 필요한 접근은 **`host_permissions`(예: `<all_urls>`)** 로 충당한다.
 - SnapContext v0.1은 이 방식을 채택했다. 자세한 결정은 [ADR 002](../adr/002-host-permissions-over-activetab.md) 참고.
 
 ## 확인

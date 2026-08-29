@@ -559,7 +559,7 @@ function init(): void {
     // 이 캡처에 실제로 주석이 있었을 때만 고지한다 — 없던 캡처까지 매번 띄우면 과잉
     // 알림이 된다(item.hasAnnotations 는 저장 시점 boolean 신호, pinsCount 와 동일 패턴).
     if (item.hasAnnotations) {
-      showToast('이전에 적용한 가리기·주석은 복원되지 않습니다.', 'info')
+      showToast('이전에 적용한 그리기(가리기 등)는 복원되지 않습니다.', 'info')
     }
     showToast('캡처를 불러왔습니다.', 'info')
     return true
@@ -588,7 +588,7 @@ function init(): void {
     // 무확인으로 주석을 통째로 날렸다 — 핀·주석 둘 다 없을 때만 확인 없이 통과시킨다.
     if (pins.length === 0 && annotations.length === 0) return true
     return showConfirm(
-      '새 캡처를 시작하면 기존 핀과 주석(가리기 등)이 삭제됩니다. 계속할까요?',
+      '새 캡처를 시작하면 기존 핀 메모와 그리기(가리기 등)가 삭제됩니다. 계속할까요?',
       app
     )
   }
