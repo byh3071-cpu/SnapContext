@@ -6,7 +6,7 @@ import type {
   PinItem
 } from '../types'
 import { generateContextPack } from '../context-pack/generator'
-import { pinKind, toggleKind } from '../context-pack/pin-kind'
+import { pinKind, restorePinsFromPack, toggleKind } from '../context-pack/pin-kind'
 import * as history from '../storage/history'
 import { sendToBackground } from '../utils/messaging'
 import type { ContextPackPanelApi } from './components/ContextPackPanel'
@@ -226,8 +226,12 @@ function init(): void {
       pins = pins.map((p) =>
         p.id === pinId ? { ...p, kind: toggleKind(pinKind(p)) } : p
       )
+      const next = pins.find((p) => p.id === pinId)
+      if (!next) {
+        throw new Error(`핀 ${pinId} 의도 토글 대상을 찾을 수 없습니다`)
+      }
       pinLayerMain.render(pins, activePinId)
-      memoList.render(pins, activePinId)
+      memoList.updateKind(pinId, pinKind(next))
       preview.refreshImageLightbox()
       syncPinOutputs()
     },
@@ -485,13 +489,9 @@ function init(): void {
       }
 
       // Restore pins from contextPack annotations.
-      const restoredPins = (item.contextPack?.annotations ?? []).map((a) => ({
-        id: a.id,
-        x: a.position.x,
-        y: a.position.y,
-        memo: a.memo ?? '',
-        kind: a.kind
-      }))
+      const restoredPins = item.contextPack
+        ? restorePinsFromPack(item.contextPack)
+        : []
 
       // Build a CaptureResultPayload-like snapshot for the pack panel.
       const viewport = item.contextPack?.capture.viewport

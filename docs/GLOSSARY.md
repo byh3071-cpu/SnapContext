@@ -39,11 +39,18 @@ status: sot
 
 ## 검사 명령
 
+코드 주석 줄은 T4b 게이트 스크립트(`scripts/check-goal-6.mjs`)가 제외한다. 아래 명령은 주석 줄을 걸러내지 않으므로 UI·프롬프트·README 검사 결과에 코드 주석 히트가 섞일 수 있다.
+
 ```bash
-grep -rnE "캡쳐|스냅샷|스크린샷|업로드됨|프롬프트 팩|Context Pack" src prompts docs README.md
+rg -n "캡쳐|스냅샷|스크린샷|주석|어노테이션|업로드|공유|프롬프트 팩|Context Pack" src prompts README.md --glob '!**/*.test.ts'
+rg -n "캡쳐" docs --glob '!docs/GLOSSARY.md' --glob '!docs/dogfood/**' --glob '!docs/tickets/**'
 ```
 
-→ 목표 0건(W3에서 게이트 편입).
+→ 목표 0건은 W3 게이트(`scripts/check-goal-6.mjs`)가 판정한다.
+
+실측 (2026-08-29, W1-fix):
+- UI·프롬프트·README: 55건 (코드 주석·식별자·템플릿 잔여 포함 — T4b가 주석 줄 제외)
+- docs 맞춤법(`캡쳐`): 48건 (W3 청소 대상)
 
 ## 출처
 

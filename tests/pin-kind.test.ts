@@ -4,7 +4,12 @@ import {
   generateContextPack,
   type GenerateContextPackInput
 } from '../src/context-pack/generator'
-import { hasBugPin, pinKind, toggleKind } from '../src/context-pack/pin-kind'
+import {
+  hasBugPin,
+  pinKind,
+  restorePinsFromPack,
+  toggleKind
+} from '../src/context-pack/pin-kind'
 import type { ContextPack, PinItem } from '../src/types'
 
 const baseInput = (): GenerateContextPackInput => ({
@@ -98,14 +103,57 @@ describe('old context pack without annotation kind', () => {
 
     expect(oldPack.annotations[0].kind).toBeUndefined()
 
-    const restored: PinItem[] = oldPack.annotations.map((a) => ({
-      id: a.id,
-      x: a.position.x,
-      y: a.position.y,
-      memo: a.memo ?? '',
-      kind: a.kind
-    }))
+    const restored = restorePinsFromPack(oldPack)
     expect(pinKind(restored[0])).toBe('ref')
     expect(hasBugPin(restored)).toBe(false)
+  })
+})
+
+describe('restorePinsFromPack', () => {
+  const basePack = (): ContextPack => ({
+    version: '0.2',
+    id: 'snap_restore',
+    source: {
+      url: 'https://example.com/restore',
+      title: 'Restore',
+      capturedAt: '2026-01-01T00:00:00.000Z'
+    },
+    capture: {
+      type: 'visible',
+      viewport: '1280x720',
+      imageSize: '240x120'
+    },
+    annotations: [],
+    debugLogs: [],
+    mode: 'context'
+  })
+
+  it('treats every pin without kind as ref', () => {
+    const pack = basePack()
+    pack.annotations = [
+      { id: 1, position: { x: 0, y: 0 }, memo: 'a' },
+      { id: 2, position: { x: 10, y: 20 }, memo: 'b' }
+    ]
+    const restored = restorePinsFromPack(pack)
+    expect(restored.every((p) => pinKind(p) === 'ref')).toBe(true)
+    expect(restored[0].kind).toBeUndefined()
+    expect(restored[1].kind).toBeUndefined()
+  })
+
+  it('preserves kind bug from a saved pack', () => {
+    const pack = basePack()
+    pack.annotations = [
+      { id: 1, position: { x: 0, y: 0 }, memo: 'broken', kind: 'bug' }
+    ]
+    const restored = restorePinsFromPack(pack)
+    expect(restored[0].kind).toBe('bug')
+    expect(pinKind(restored[0])).toBe('bug')
+  })
+
+  it('maps null memo to an empty string', () => {
+    const pack = basePack()
+    pack.annotations = [{ id: 1, position: { x: 5, y: 5 }, memo: null }]
+    const restored = restorePinsFromPack(pack)
+    expect(restored[0].memo).toBe('')
   })
 })

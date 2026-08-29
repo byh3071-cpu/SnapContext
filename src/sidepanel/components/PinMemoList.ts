@@ -4,6 +4,7 @@ import { swissIcon, swissPinGlyph } from '../utils/swiss-icons'
 
 export type PinMemoListApi = {
   render: (pins: PinItem[], activePinId: number | null) => void
+  updateKind: (pinId: number, kind: 'bug' | 'ref') => void
   focusMemo: (pinId: number) => void
   highlightRow: (activePinId: number | null) => void
 }
@@ -76,15 +77,10 @@ export function mountPinMemoList(
       })
       ta.addEventListener('focus', () => handlers.onFocusPin(pin.id))
 
-      const isBug = pinKind(pin) === 'bug'
       const kindBtn = document.createElement('button')
       kindBtn.type = 'button'
       kindBtn.className = 'pin-memo__kind'
-      kindBtn.setAttribute('aria-pressed', isBug ? 'true' : 'false')
-      kindBtn.textContent = isBug ? '버그' : '참고'
-      if (isBug) {
-        kindBtn.title = '예상과 다르게 동작해요'
-      }
+      applyKindToButton(kindBtn, pin.id, pinKind(pin))
       kindBtn.addEventListener('click', () => handlers.onToggleKind(pin.id))
 
       const del = document.createElement('button')
@@ -97,12 +93,22 @@ export function mountPinMemoList(
 
       const field = document.createElement('div')
       field.className = 'pin-memo__field'
-      field.append(kindBtn, ta, del)
+      field.append(ta, kindBtn, del)
 
       row.append(label, field)
       listRoot.appendChild(row)
       autoGrow(ta)
     }
+  }
+
+  const updateKind = (pinId: number, kind: 'bug' | 'ref'): void => {
+    const btn = listRoot.querySelector<HTMLButtonElement>(
+      `.pin-memo__row[data-pin-id="${pinId}"] .pin-memo__kind`
+    )
+    if (!btn) {
+      throw new Error(`핀 ${pinId} 의도 토글 버튼을 찾을 수 없습니다`)
+    }
+    applyKindToButton(btn, pinId, kind)
   }
 
   const focusMemo = (pinId: number): void => {
@@ -113,7 +119,24 @@ export function mountPinMemoList(
     ta?.select()
   }
 
-  return { render, focusMemo, highlightRow }
+  return { render, updateKind, focusMemo, highlightRow }
+}
+
+function applyKindToButton(
+  kindBtn: HTMLButtonElement,
+  pinId: number,
+  kind: 'bug' | 'ref'
+): void {
+  const isBug = kind === 'bug'
+  kindBtn.setAttribute('aria-pressed', isBug ? 'true' : 'false')
+  kindBtn.textContent = isBug ? '버그' : '참고'
+  kindBtn.title = isBug
+    ? '예상과 다르게 동작해요 (누르면 참고로)'
+    : '누르면 버그로 표시 — 예상과 다르게 동작할 때'
+  kindBtn.setAttribute(
+    'aria-label',
+    `핀 ${pinId} 의도: ${isBug ? '버그' : '참고'}`
+  )
 }
 
 function autoGrow(el: HTMLTextAreaElement): void {
