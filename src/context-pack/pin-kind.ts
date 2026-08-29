@@ -15,7 +15,7 @@ export function toggleKind(k: PinKind): PinKind {
 }
 
 export function restorePinsFromPack(pack: ContextPack): PinItem[] {
-  return pack.annotations.map((a) => ({
+  return (pack.annotations ?? []).map((a) => ({
     id: a.id,
     x: a.position.x,
     y: a.position.y,
