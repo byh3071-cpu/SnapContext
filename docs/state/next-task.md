@@ -82,3 +82,13 @@ TASK: 0.4.6 — W1 머지 결재 / W2-fix / W3 착수
   ledger: docs/dogfood/2026-08-29-orchestration-ledger.md (DF-01~45)
 ```
 
+## 2026-08-30 (2) — W2 PR 생성 · W3 진행
+
+```text
+TASK: 0.4.6 — PR #25·#26 머지 결재 / W3 T4b 진행
+  status: BLOCKED_ON_HUMAN (PR #25 → #26 순서 머지) + IN_PROGRESS (T4b, composer-2.5, 046-t4b-terminology-version)
+  pr1: https://github.com/byh3071-cpu/snapcontext/pull/25   pr2: https://github.com/byh3071-cpu/snapcontext/pull/26 (base 046-w1, 스택)
+  w2_evidence: 173 passed · tsc 0 · build OK · E2E 6/7 (upload-share.mjs는 046-w1 기준선에서도 동일 실패 — 환경 의존, 0.4.7)
+  w3_next: T4b 완료 → 046-w3 통합 재측정(+E2E 6종) → critic → PR #3 → 요한 수동 QA·tag v0.4.6 → 보고서 3종
+```
+

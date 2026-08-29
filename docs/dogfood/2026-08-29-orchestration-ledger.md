@@ -68,6 +68,7 @@ status: open
 | DF-48 | 워커가 E2E까지 자발 실행 (긍정) | W2-fix 워커(grok)가 티켓의 "가능하면 `node tests/e2e/coverage.mjs`"를 실제로 돌려 17/17 통과를 보고 — worktree에서 Chromium E2E가 그냥 된다는 사실도 함께 확인됨(dist 빌드 포함) | — | — | W3 DoD에 E2E 6종(upload-share 제외) 고정 | (칭찬) |
 | DF-49 | W2 수정 루프 결과 | critic FAIL(B1·M1·m6) → W2-fix 12.6분(grok) → 재검증 PASS·MAJOR 0. 누적 critic 4회차 300k 토큰. 워커가 "m1은 이미 구현과 일치해 red가 아니었다"고 **거짓 red-first 주장 없이** 보고 | — | — | 워커 보고 정직성 3회 연속 확인 → 부록 D 계약 확정 | (칭찬) |
 | DF-50 | 런타임 단언의 부작용 (설계 교훈) | `assertOneLine`이 저장 성공 토스트 **생성 시점**에 돌아, 문구가 80자를 넘으면 `ImageActions` catch로 빠져 성공한 저장이 실패 배지로 뒤집힘(critic 지적, 도달 불가지만 시한폭탄). 지휘자가 경계 테스트 3건 추가 | 미래 문구 수정 시 조용한 오판정 | `tests/one-line.test.ts` | 규칙: 상수 문구 검증은 모듈 로드/테스트 시점에, 런타임 경로에서 throw 금지 — PAT 후보(`state`) | 중 |
+| DF-51 | W3 기동 — `worktree create --agent cursor` (긍정 + 지휘자 결함) | **첫 탭=에이전트, 폴백 셸 0, Trust 자동 처리** 확인(DF-37 해법 실증). 기본 모델은 Orca 설정의 Composer 2.5(우연히 목표와 일치 — `/model` 전환 로직은 필요 시 작동). 단 내 출력 파이프(`tee \| grep` 정규식 오류)가 기동기를 중간에 죽여 로그가 비었고, 이미 주입된 지시문을 모르고 **한 번 더 보냄**(중복 지시, 워커 컨텍스트 22→25%) | 중복 지시 1회 | 워커가 동일 지시로 인식 | 기동기는 결과를 파일에 직접 쓰고 파이프 후처리 금지 · 주입 전 "이미 작업 중(컨텍스트%>0)"이면 건너뛰기 | 하 |
 | DF-22 | vhk `receipt --mark-start` | 실행이 tracked `.vhk/.gitignore`를 수정 → 직후 `mission check`가 scope 밖 변경 경고(노이즈) | 경고 오독 | 무시·커밋 | receipt가 만지는 파일은 mission scope 기본 포함 또는 untracked로 | 하 |
 
 ## 정상 동작 확인(칭찬 목록 — 보고서 균형용)
