@@ -3,12 +3,14 @@ vhk_format: 1
 type: goal
 id: 0
 title: Phase 0 — 경쟁사 리서치 + 스토어 설명문
-status: IN_PROGRESS
+status: BLOCKED
 priority: P0
 version: v0.2
 ---
 
 # Mission
+
+> **OPS-001 (2026-08-26):** 오늘 할 일에서 보류. 재개 근거가 생기기 전까지 진행하지 않는다. 표시만 바꿈. 본문 작업 내용은 유지.
 
 Chrome/Whale 스토어 설명문·안내 문구 초안 (v0.2 클라우드 업로드·7일 만료 반영).
 
