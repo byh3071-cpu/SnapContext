@@ -15,6 +15,7 @@ import {
   buildMcpSetup,
   type McpClient
 } from '../../utils/mcp-onboarding'
+import type { SaveResult } from '../../storage/save-status'
 import { toKoreanErrorMessage } from '../../utils/messaging'
 import { saveCaptureWithToken } from '../../utils/share-upload'
 import {
@@ -52,6 +53,7 @@ export interface ImageActionsApi {
   copyPng: () => Promise<void>
   /** 저장된 토큰 표시(마스킹)를 다시 읽어 갱신한다 — 설정 화면 재발급 성공 후 호출용. */
   refreshTokenStatus: () => Promise<void>
+  saveCurrent: () => Promise<void>
 }
 
 const MODE_OPTIONS: ReadonlyArray<{
@@ -289,6 +291,7 @@ export function mountImageActions(
     getAnnotations: () => Annotation[]
     getContext: () => SharedContext | null
     showToast: (message: string, kind?: 'info' | 'error') => void
+    onSaveResult: (r: SaveResult) => void
   }
 ): ImageActionsApi {
   pngHost.classList.add('image-actions')
@@ -589,50 +592,58 @@ export function mountImageActions(
   })
 
   let saving = false
+  const saveCurrent = async (): Promise<void> => {
+    if (saving) return
+    const image = deps.getImage()
+    const context = deps.getContext()
+    const mode = MODE_OPTIONS.find((entry) => entry.value === modeSelect.value)
+      ?.value
+    if (!image || !context || !mode) {
+      deps.showToast('먼저 화면을 캡처해 주세요.', 'error')
+      return
+    }
+
+    const days = expiryDays
+    try {
+      const consentedDays = readConsentedDays(
+        await getStorageItem<unknown>(PRIVATE_CONSENT_KEY)
+      )
+      if (needsShareConsent(consentedDays, days)) {
+        const approved = await showConfirm(buildPrivateSaveConsentMessage(days))
+        if (!approved) return
+        await setStorageItem(PRIVATE_CONSENT_KEY, days)
+      }
+
+      saving = true
+      saveButton.disabled = true
+      saveButtonText.textContent = '저장 중…'
+      const blob = await renderAnnotatedPngBlob(image, deps.getPins(), deps.getAnnotations())
+      const contextV2 = buildContextV2(
+        context,
+        intentInput.value.trim(),
+        mode
+      )
+      const saved = await saveCaptureWithToken(blob, contextV2, days)
+      deps.onSaveResult({
+        status: 'saved',
+        id: saved.id,
+        expiresAt: saved.expiresAt
+      })
+      await refreshTokenStatus()
+      await refreshSavedCaptures()
+      deps.showToast(buildPrivateSaveSuccessMessage(days), 'info')
+    } catch (error) {
+      const message = toKoreanErrorMessage(error)
+      deps.onSaveResult({ status: 'failed', message })
+      deps.showToast(message, 'error')
+    } finally {
+      saving = false
+      saveButton.disabled = !deps.hasCapture()
+      saveButtonText.textContent = '내 AI에 저장'
+    }
+  }
   saveButton.addEventListener('click', () => {
-    void (async () => {
-      if (saving) return
-      const image = deps.getImage()
-      const context = deps.getContext()
-      const mode = MODE_OPTIONS.find((entry) => entry.value === modeSelect.value)
-        ?.value
-      if (!image || !context || !mode) {
-        deps.showToast('먼저 화면을 캡처해 주세요.', 'error')
-        return
-      }
-
-      const days = expiryDays
-      try {
-        const consentedDays = readConsentedDays(
-          await getStorageItem<unknown>(PRIVATE_CONSENT_KEY)
-        )
-        if (needsShareConsent(consentedDays, days)) {
-          const approved = await showConfirm(buildPrivateSaveConsentMessage(days))
-          if (!approved) return
-          await setStorageItem(PRIVATE_CONSENT_KEY, days)
-        }
-
-        saving = true
-        saveButton.disabled = true
-        saveButtonText.textContent = '저장 중…'
-        const blob = await renderAnnotatedPngBlob(image, deps.getPins(), deps.getAnnotations())
-        const contextV2 = buildContextV2(
-          context,
-          intentInput.value.trim(),
-          mode
-        )
-        await saveCaptureWithToken(blob, contextV2, days)
-        await refreshTokenStatus()
-        await refreshSavedCaptures()
-        deps.showToast(buildPrivateSaveSuccessMessage(days), 'info')
-      } catch (error) {
-        deps.showToast(toKoreanErrorMessage(error), 'error')
-      } finally {
-        saving = false
-        saveButton.disabled = !deps.hasCapture()
-        saveButtonText.textContent = '내 AI에 저장'
-      }
-    })()
+    void saveCurrent()
   })
 
   const reloadExpiry = async (): Promise<void> => {
@@ -654,5 +665,5 @@ export function mountImageActions(
   }
   sync()
 
-  return { sync, copyPng, refreshTokenStatus }
+  return { sync, copyPng, refreshTokenStatus, saveCurrent }
 }

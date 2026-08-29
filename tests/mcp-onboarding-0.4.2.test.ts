@@ -62,7 +62,9 @@ describe('사람이 읽는 0.4.2 연결 안내', () => {
 
   it('성공 문구는 링크 복사나 익명을 말하지 않는다', () => {
     const message = buildPrivateSaveSuccessMessage(30)
-    expect(message).toBe('내 AI에 저장됨 · 30일 후 삭제 · 연결한 AI 도구에서 조회')
+    expect(message).toBe(
+      "내 AI에 저장됨 — Claude Code·Cursor에서 '방금 캡처 분석해줘'라고 하면 읽습니다."
+    )
     expect(message).not.toMatch(/링크|익명/)
   })
 })
