@@ -33,6 +33,7 @@ describe('buildPackSummary', () => {
       hasImage: true,
       hasUserNote: false
     })
+    expect(buildPackSummary(emptyPack(), 'bug', { hasImage: true, userNote: '   ' }).hasUserNote).toBe(false)
   })
 
   it('counts three pins with one bug and treats missing kind as ref', () => {
@@ -85,6 +86,7 @@ describe('buildPackSummary', () => {
 describe('COPY_NEXT_ACTION', () => {
   it('passes assertOneLine (no newline, at most 80 chars)', () => {
     expect(() => assertOneLine(COPY_NEXT_ACTION)).not.toThrow()
+    expect(COPY_NEXT_ACTION).toBe('AI 대화창에 붙여넣고 이미지를 함께 첨부하세요.')
     expect(COPY_NEXT_ACTION.includes('\n')).toBe(false)
     expect(COPY_NEXT_ACTION.length).toBeLessThanOrEqual(80)
   })

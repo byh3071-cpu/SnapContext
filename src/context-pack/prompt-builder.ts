@@ -48,7 +48,7 @@ export function buildTemplatePrompt(
 ): string {
   const source = pack.source
   const capture = pack.capture
-  const pinItems = pack.annotations.map(annotationToPin)
+  const pinItems = (pack.annotations ?? []).map(annotationToPin)
   const debug = template === 'bug' && hasBugPin(pinItems)
   const lite = !debug
   const viewport = extras?.viewport ?? parseViewport(capture.viewport)

@@ -1,5 +1,8 @@
 import { getStorageItem, setStorageItem } from '../storage'
+import { assertOneLine } from './one-line'
 import { EXPIRY_DAYS_ALLOWLIST, isExpiryDays, type ExpiryDays } from './upload'
+
+export { assertOneLine }
 
 /** 키 이름은 기존 사용자의 보관 기간 선택을 유지하기 위해 바꾸지 않는다. */
 export const SHARE_EXPIRY_STORAGE_KEY = 'shareExpiryDays'
@@ -17,19 +20,9 @@ export function buildPrivateSaveConsentMessage(days: ExpiryDays): string {
   )
 }
 
-export function assertOneLine(text: string): void {
-  if (text.includes('\n') || text.includes('\r')) {
-    throw new Error('안내 문구는 한 줄이어야 합니다.')
-  }
-  if (text.length > 80) {
-    throw new Error('안내 문구는 80자를 넘을 수 없습니다.')
-  }
-}
-
 export function buildPrivateSaveSuccessMessage(days: ExpiryDays): string {
-  void days
   const message =
-    "내 AI에 저장됨 — Claude Code·Cursor에서 '방금 캡처 분석해줘'라고 하면 읽습니다."
+    `내 AI에 저장됨(${formatExpiryDays(days)} 후 삭제) — Claude Code·Cursor에서 '방금 캡처 분석해줘'라고 하면 읽습니다.`
   assertOneLine(message)
   return message
 }

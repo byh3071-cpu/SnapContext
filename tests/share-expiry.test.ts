@@ -30,9 +30,12 @@ describe('비공개 저장 문구와 동의', () => {
   })
 
   it('성공 문구는 저장 후 다음 행동만 말한다', () => {
-    expect(buildPrivateSaveSuccessMessage(30)).toBe(
-      "내 AI에 저장됨 — Claude Code·Cursor에서 '방금 캡처 분석해줘'라고 하면 읽습니다."
+    const message = buildPrivateSaveSuccessMessage(30)
+    expect(message).toBe(
+      "내 AI에 저장됨(30일 후 삭제) — Claude Code·Cursor에서 '방금 캡처 분석해줘'라고 하면 읽습니다."
     )
+    expect(message).toContain('30일 후 삭제')
+    expect(message.includes('\n')).toBe(false)
   })
 
   it('동의한 기간보다 길어질 때만 다시 동의를 받는다', () => {

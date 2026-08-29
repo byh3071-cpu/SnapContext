@@ -593,7 +593,10 @@ export function mountImageActions(
 
   let saving = false
   const saveCurrent = async (): Promise<void> => {
-    if (saving) return
+    if (saving) {
+      deps.showToast('이미 저장 중입니다.', 'info')
+      return
+    }
     const image = deps.getImage()
     const context = deps.getContext()
     const mode = MODE_OPTIONS.find((entry) => entry.value === modeSelect.value)

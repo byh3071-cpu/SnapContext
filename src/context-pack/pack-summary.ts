@@ -41,7 +41,7 @@ export function buildPackSummary(
   template: PromptTemplateId,
   extras: { hasImage: boolean; userNote?: string }
 ): PackSummary {
-  const pins = pack.annotations.map(annotationToPin)
+  const pins = (pack.annotations ?? []).map(annotationToPin)
   return {
     templateLabel: TEMPLATE_LABELS[template],
     pinCount: pins.length,

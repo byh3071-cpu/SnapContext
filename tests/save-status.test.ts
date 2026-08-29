@@ -81,6 +81,8 @@ describe('buildPrivateSaveSuccessMessage', () => {
   it('is one line, mentions the analysis phrase, and omits 업로드', () => {
     const message = buildPrivateSaveSuccessMessage(7)
     expect(() => assertOneLine(message)).not.toThrow()
+    expect(message).toContain('7일 후 삭제')
+    expect(message.includes('\n')).toBe(false)
     expect(message).toContain('캡처 분석해줘')
     expect(message).not.toContain('업로드')
   })

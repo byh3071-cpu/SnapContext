@@ -338,7 +338,7 @@ export function mountContextPackPanel(
         void (async () => {
           try {
             await navigator.clipboard.writeText(item.prompt)
-            deps.showToast('프롬프트를 복사했습니다.', 'info')
+            deps.showToast(COPY_NEXT_ACTION, 'info')
           } catch (e) {
             deps.showToast(toKoreanErrorMessage(e), 'error')
           }
@@ -353,7 +353,7 @@ export function mountContextPackPanel(
             await navigator.clipboard.writeText(
               `--- AI 프롬프트 ---\n\n${item.prompt}\n\n--- 컨텍스트 팩 JSON ---\n\n${item.json}`
             )
-            deps.showToast('프롬프트와 JSON을 복사했습니다.', 'info')
+            deps.showToast(COPY_NEXT_ACTION, 'info')
           } catch (e) {
             deps.showToast(toKoreanErrorMessage(e), 'error')
           }
@@ -564,8 +564,15 @@ export function mountContextPackPanel(
     if (rawDetails.open) refreshRawText()
   })
 
+  let intentSyncTimer: number | null = null
   intentInput.addEventListener('input', () => {
-    sync()
+    if (intentSyncTimer !== null) {
+      window.clearTimeout(intentSyncTimer)
+    }
+    intentSyncTimer = window.setTimeout(() => {
+      intentSyncTimer = null
+      sync()
+    }, 400)
   })
 
   templateSelect.addEventListener('change', () => {
