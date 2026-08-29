@@ -6,7 +6,8 @@
 // Env: VHK_GATES_SKIP_DEEP=1  → test + build 스킵 (빠른 typecheck-only 패스)
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 
 const SHIM = new Set(['pnpm', 'npm', 'npx', 'yarn'])
 // cmd.exe /c 래핑 경로는 따옴표+&|<>^% 조합 인자로 인용 경계를 탈출당할 수 있다(CVE-2024-27980
@@ -60,9 +61,55 @@ if (!skipDeep) {
   if (scripts.build) gate('build', run(pm, ['run', 'build']))
 }
 
-// ─── goal 6 고유 검증 (직접 추가) ───────────────────────────────
-// const read = (p) => existsSync(p) ? readFileSync(p, 'utf-8') : null
-// must(read('src/foo.ts')?.includes('bar'), 'foo.ts 에 bar 존재')
+// ─── goal 6 고유 검증 (T4b) ─────────────────────────────────────
+const walkFiles = (dir, pred) => {
+  const out = []
+  if (!existsSync(dir)) return out
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) out.push(...walkFiles(p, pred))
+    else if (pred(p)) out.push(p)
+  }
+  return out
+}
+const stripTsComments = (src) =>
+  src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((line) => {
+      const i = line.indexOf('//')
+      return i >= 0 ? line.slice(0, i) : line
+    })
+    .join('\n')
+const SRC_STRING_FORBIDDEN = /'[^']*(?:주석|어노테이션|업로드|공유|스냅샷|스크린샷)[^']*'/
+const UI_README_FORBIDDEN = /캡쳐|스냅샷|스크린샷|주석|Context Pack|프롬프트 팩/
+const DOCS_TYPO = /캡쳐/
+
+const srcHits = []
+for (const p of walkFiles('src', (f) => f.endsWith('.ts'))) {
+  const body = stripTsComments(readFileSync(p, 'utf-8'))
+  if (SRC_STRING_FORBIDDEN.test(body)) srcHits.push(p)
+}
+must(srcHits.length === 0, `src 문자열 리터럴 금지어 0건 (현재 ${srcHits.length}건: ${srcHits.slice(0, 3).join(', ')})`)
+
+const uiHits = []
+for (const p of [...walkFiles('prompts', (f) => f.endsWith('.md')), 'README.md'].filter(existsSync)) {
+  if (UI_README_FORBIDDEN.test(readFileSync(p, 'utf-8'))) uiHits.push(p)
+}
+must(uiHits.length === 0, `prompts·README 금지어 0건 (현재 ${uiHits.length}건: ${uiHits.slice(0, 3).join(', ')})`)
+
+const docsTypoHits = []
+for (const p of walkFiles('docs', (f) => f.endsWith('.md'))) {
+  const rel = p.replace(/\\/g, '/')
+  if (rel.includes('docs/dogfood/') || rel.includes('docs/tickets/') || rel === 'docs/GLOSSARY.md') continue
+  if (DOCS_TYPO.test(readFileSync(p, 'utf-8'))) docsTypoHits.push(rel)
+}
+must(docsTypoHits.length === 0, `docs 캡쳐 0건 (현재 ${docsTypoHits.length}건: ${docsTypoHits.slice(0, 3).join(', ')})`)
+
+must(existsSync('docs/GLOSSARY.md'), 'docs/GLOSSARY.md 존재')
+
+const manifestVer = existsSync('manifest.json') ? readJson('manifest.json').version : null
+must(manifestVer === pkg.version && pkg.version === '0.4.6', `버전 4값 0.4.6 (package=${pkg.version}, manifest=${manifestVer})`)
 
 if (pass) { console.log('✅ goal 6 gate passes'); process.exit(0) }
 console.log('❌ goal 6 gate failed'); process.exit(1)
