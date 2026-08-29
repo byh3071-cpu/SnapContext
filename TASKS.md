@@ -2,6 +2,14 @@
 
 ## Active
 
+- [ ] **P0 — 0.4.6 마감: PR 3개 머지 → 수동 QA → tag v0.4.6** (2026-08-30 W3 critic 진행, 계획 `goals/6-046-ux-polish-plan.md`)
+  - PR #25(W1) → #26(W2, 스택) → #27(W3, 예정) 순서 머지 ★ → `pnpm dogfood:up` 첫 15초 흐름 + 실패 배지 재현 ★ → tag ★.
+  - 독푸딩 보고서 3종: `docs/dogfood/2026-08-30-report-1-ops-manual-feedback.md`(정본별 52건+) · `docs/log/2026-08-30-0.4.6-orchestration-worklog.md` · `docs/dogfood/2026-08-30-report-3-worker-report-contract.md`.
+
+- [ ] **P0 — 재심사 준비: 스토어 킷 재작성 (tag 전 필수, 0.4.6 critic 발견 DF-57)**
+  - `scripts/generate-store-screenshots.mjs` scene ④가 0.4.2에서 폐지된 "익명 공유·공유 링크·7일 업로드"를 광고 + 금지어(핀 주석·Context Pack). `docs/store/listing-0.2.0-draft.md`도 동일.
+  - 0.4.2/0.4.4 프라이빗 전환("내 AI에 저장"·서명 URL·`/s` 폐쇄) 기준으로 스크린샷 시나리오·스토어 문구 재작성 → 용어 사전 준수 → 생성기 실행 확인. 재심사 제출물의 허위 광고 방지.
+
 - [x] **P0 — 0.4.2 릴리즈 실행** — 2026-08-17 0.4.4 배포로 잔여 소화(production 배포 겸행·PRIVACY 410 현행화 공개 완료). v0.4.2 단독 태그는 생략(v0.4.3 태그 존재로 무의미).
   - 선택(권장) 잔존: staging TOKEN_SIGNING_SECRET 회전(smoke 토큰 일괄 무효화).
 
