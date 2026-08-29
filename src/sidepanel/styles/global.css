@@ -1323,6 +1323,61 @@ textarea.pin-memo__input {
   line-height: var(--lh-body);
   margin-bottom: var(--s-4);
 }
+.context-pack-panel__summary {
+  margin-top: var(--s-4);
+  padding: var(--s-3);
+  background: var(--paper-2);
+  border: var(--rule-hair) solid var(--hair-2);
+  display: grid;
+  gap: var(--s-3);
+}
+.context-pack-panel__summary-items {
+  display: grid;
+  gap: var(--s-2);
+}
+.context-pack-panel__summary-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  font-size: var(--t-body);
+  line-height: var(--lh-snug);
+  word-break: keep-all;
+}
+.context-pack-panel__summary-label {
+  color: var(--muted);
+}
+.context-pack-panel__summary-value {
+  color: var(--ink);
+  font-weight: 700;
+  text-align: right;
+}
+.context-pack-panel__summary--inactive {
+  opacity: 0.45;
+}
+.context-pack-panel__raw {
+  margin-top: var(--s-3);
+}
+.context-pack-panel__raw summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: var(--t-label);
+  font-weight: 700;
+  word-break: keep-all;
+}
+.context-pack-panel__raw-text {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-3);
+  max-height: 240px;
+  overflow: auto;
+  background: var(--paper-2);
+  border: var(--rule-hair) solid var(--hair);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 /* 버튼 내부 아이콘 래퍼 (legacy 클래스 — E2E 셀렉터 유지) */
 .context-pack-panel__icon {
   display: inline-flex;
