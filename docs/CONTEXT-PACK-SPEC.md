@@ -1,7 +1,7 @@
 # Context Pack Specification v0.1
 
 ## 목적
-Context Pack은 캡쳐한 화면 + 주석 + 메타데이터를 AI가 바로 이해할 수 있는 구조화된 패키지로 변환한 것이다.
+Context Pack은 캡처한 화면 + 주석 + 메타데이터를 AI가 바로 이해할 수 있는 구조화된 패키지로 변환한 것이다.
 
 ## JSON Schema
 
@@ -48,7 +48,7 @@ Context Pack은 캡쳐한 화면 + 주석 + 메타데이터를 AI가 바로 이�
 ### source
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| url | string | 캡쳐한 페이지 URL |
+| url | string | 캡처한 페이지 URL |
 | title | string | 페이지 타이틀 |
 | viewport | object | 브라우저 뷰포트 크기 |
 | userAgent | string | 브라우저 UA 문자열 |
@@ -57,7 +57,7 @@ Context Pack은 캡쳐한 화면 + 주석 + 메타데이터를 AI가 바로 이�
 ### capture
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| imageBase64 | string | 캡쳐 이미지 (base64 PNG) |
+| imageBase64 | string | 캡처 이미지 (base64 PNG) |
 | width | number | 이미지 너비 (px) |
 | height | number | 이미지 높이 (px) |
 | selectedElement | string? | Element Capture일 때 CSS selector |
@@ -69,11 +69,12 @@ Context Pack은 캡쳐한 화면 + 주석 + 메타데이터를 AI가 바로 이�
 | x | number | 이미지 내 상대 X 좌표 (%, 0-100) |
 | y | number | 이미지 내 상대 Y 좌표 (%, 0-100) |
 | memo | string | 사용자 메모 |
+| kind | `'bug' \| 'ref'` | optional, 없으면 `ref`, 0.4.6 도입 |
 
 ### context
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| userNote | string? | 전체 캡쳐에 대한 사용자 노트 |
+| userNote | string? | 전체 캡처에 대한 사용자 노트 |
 | tags | string[]? | 수동 태그 (v0.3에서 자동 추천) |
 
 ## Markdown Export 포맷 (AI 프롬프트용)
@@ -81,9 +82,9 @@ Context Pack은 캡쳐한 화면 + 주석 + 메타데이터를 AI가 바로 이�
 ​
 SnapContext: Dashboard — My App
 URL: https://example.com/dashboard
-캡쳐 유형: visible
+캡처 유형: visible
 뷰포트: 1920 × 1080
-캡쳐 시간: 2026-05-07 07:50 KST
+캡처 시간: 2026-05-07 07:50 KST
 주석
 (45.2%, 30.8%) — 이 차트의 Y축 라벨이 잘림
 (72.1%, 55.0%) — hover 시 툴팁이 뒤에 가려짐
