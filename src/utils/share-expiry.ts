@@ -17,8 +17,21 @@ export function buildPrivateSaveConsentMessage(days: ExpiryDays): string {
   )
 }
 
+export function assertOneLine(text: string): void {
+  if (text.includes('\n') || text.includes('\r')) {
+    throw new Error('안내 문구는 한 줄이어야 합니다.')
+  }
+  if (text.length > 80) {
+    throw new Error('안내 문구는 80자를 넘을 수 없습니다.')
+  }
+}
+
 export function buildPrivateSaveSuccessMessage(days: ExpiryDays): string {
-  return `내 AI에 저장됨 · ${formatExpiryDays(days)} 후 삭제 · 연결한 AI 도구에서 조회`
+  void days
+  const message =
+    "내 AI에 저장됨 — Claude Code·Cursor에서 '방금 캡처 분석해줘'라고 하면 읽습니다."
+  assertOneLine(message)
+  return message
 }
 
 export function readConsentedDays(stored: unknown): ExpiryDays | null {

@@ -29,9 +29,9 @@ describe('비공개 저장 문구와 동의', () => {
     expect(message).toContain('7일 후 삭제')
   })
 
-  it('성공 문구는 저장·삭제·AI 조회만 말한다', () => {
+  it('성공 문구는 저장 후 다음 행동만 말한다', () => {
     expect(buildPrivateSaveSuccessMessage(30)).toBe(
-      '내 AI에 저장됨 · 30일 후 삭제 · 연결한 AI 도구에서 조회'
+      "내 AI에 저장됨 — Claude Code·Cursor에서 '방금 캡처 분석해줘'라고 하면 읽습니다."
     )
   })
 

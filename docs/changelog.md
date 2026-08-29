@@ -9,6 +9,7 @@ tags: [changelog]
 ## 0.4.6 — 진행 중 (ext-only)
 
 - 타입: `PinItem.kind?`·`ContextPack.annotations[].kind?` 추가(하위호환, 기본 ref).
+- 타입: `CaptureHistoryItem.saveStatus?`·`savedCaptureId?`·`saveError?` 추가(하위호환).
 
 ## 0.4.4 — 구현 완료 · 적대 검증·배포·tag 대기 (worker-only)
 
