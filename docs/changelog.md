@@ -15,8 +15,8 @@ tags: [changelog]
 - T5: 핀마다 버그/참고 의도를 표시하고 토글로 바꿀 수 있다.
 - T6: 내 AI에 저장 결과를 저장됨/실패 배지로 보여준다.
 - 용어 사전 `docs/GLOSSARY.md` 신설, 확장 버전 4값 0.4.6. worker serverInfo 무변경(ADR-014).
-- 타입: PinItem.kind?·ContextPack.annotations[].kind? 추가(하위호환, 기본 ref).
-- 타입: CaptureHistoryItem.saveStatus?·savedCaptureId?·saveError? 추가(하위호환).
+- 타입: `PinItem.kind?`·`ContextPack.annotations[].kind?` 추가(하위호환, 기본 ref).
+- 타입: `CaptureHistoryItem.saveStatus?`·`savedCaptureId?`·`saveError?` 추가(하위호환).
 
 ## 0.4.4 — 구현 완료 · 적대 검증·배포·tag 대기 (worker-only)
 
