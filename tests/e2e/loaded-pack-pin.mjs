@@ -151,9 +151,9 @@ async function main() {
     })
 
     log(
-      'prompt contains "## 핀 주석" section',
-      clipboardText.includes('## 핀 주석'),
-      clipboardText.includes('## 핀 주석') ? 'present' : 'MISSING'
+      'prompt contains "## 핀 메모" section',
+      clipboardText.includes('## 핀 메모'),
+      clipboardText.includes('## 핀 메모') ? 'present' : 'MISSING'
     )
     log(
       'prompt contains the new pin memo "새 메모"',
@@ -185,7 +185,7 @@ async function main() {
       `value="${restoredMemo}"`
     )
 
-    if (!clipboardText.includes('## 핀 주석') || !clipboardText.includes('새 메모')) {
+    if (!clipboardText.includes('## 핀 메모') || !clipboardText.includes('새 메모')) {
       console.log('\n[loaded-pack] DEBUG full clipboard text:')
       console.log('---')
       console.log(clipboardText)

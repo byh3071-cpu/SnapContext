@@ -1,4 +1,5 @@
-import type { ContextPack } from '../types'
+import type { ContextPack, PinItem } from '../types'
+import { hasBugPin, pinKind } from './pin-kind'
 import { renderTemplate } from './template-engine'
 import bugReportTemplate from '../../prompts/templates/bug-report.md?raw'
 import refactorTemplate from '../../prompts/templates/refactor.md?raw'
@@ -28,6 +29,18 @@ function parseViewport(value: string): { width: number; height: number } {
   }
 }
 
+function annotationToPin(a: ContextPack['annotations'][number]): PinItem {
+  return {
+    id: a.id,
+    x: a.position.x,
+    y: a.position.y,
+    memo: a.memo ?? '',
+    kind: a.kind
+  }
+}
+
+const EMPTY_VIEWPORT = { width: 0, height: 0 }
+
 export function buildTemplatePrompt(
   pack: ContextPack,
   template: PromptTemplateId,
@@ -35,20 +48,26 @@ export function buildTemplatePrompt(
 ): string {
   const source = pack.source
   const capture = pack.capture
+  const pinItems = (pack.annotations ?? []).map(annotationToPin)
+  const debug = template === 'bug' && hasBugPin(pinItems)
+  const lite = !debug
   const viewport = extras?.viewport ?? parseViewport(capture.viewport)
   const ctx = {
+    debug,
+    lite,
     source: {
       url: source.url,
       title: source.title,
-      userAgent: extras?.userAgent ?? '',
-      captureType: capture.type,
-      viewport
+      userAgent: debug ? (extras?.userAgent ?? '') : '',
+      captureType: debug ? capture.type : '',
+      viewport: debug ? viewport : EMPTY_VIEWPORT
     },
-    pins: pack.annotations.map((a) => ({
-      id: a.id,
-      x: a.position.x.toFixed(1),
-      y: a.position.y.toFixed(1),
-      memo: a.memo?.trim() ? a.memo : '(메모 없음)'
+    pins: pinItems.map((p) => ({
+      id: p.id,
+      x: p.x.toFixed(1),
+      y: p.y.toFixed(1),
+      memo: p.memo.trim() ? p.memo : '(메모 없음)',
+      tag: pinKind(p) === 'bug' ? ' [버그]' : ''
     })),
     context: {
       userNote: extras?.userNote?.trim() ?? ''
