@@ -1,7 +1,7 @@
 /*
  * Chrome Web Store 스크린샷 generator (1280×800 PNG ×5) — v0.2.0 스위스 에디토리얼.
  * 실 dist 사이드패널을 Playwright로 캡처해 스위스 프레임(종이/잉크/시그널 레드)에 조판한다.
- * scene: ① AI 컨텍스트 후킹 ② 캡처 4모드 ③ 프롬프트 템플릿 ④ 익명 공유(fetch mock) ⑤ 단축키.
+ * scene: ① 컨텍스트 팩 요약 카드 ② 캡처 4모드 ③ 프롬프트 템플릿 ④ 내 AI에 저장(fetch mock, 저장됨 배지) ⑤ 단축키.
  * 단축키 카피는 manifest 진실 기준: 기본 4개, copy-png는 직접 지정(Alt+Shift+P 표기 금지).
  */
 import { chromium } from 'playwright'
@@ -30,7 +30,8 @@ const USER_DATA_DIR = resolve(tmpdir(), `snapcontext-store-${Date.now()}`)
 
 const PANEL_VIEWPORT = { width: 390, height: 760 }
 const STORE_VIEWPORT = { width: 1280, height: 800 }
-const SHARE_MOCK_URL = 'https://snapcontext-worker.byh3071-26a.workers.dev/s/k3x9q2'
+const MOCK_CAPTURE_ID = 'k3x9q2'
+const MOCK_TOKEN = 'sc_storedemo0123456789abcdef.demo0123456789abcdef' // 형식 sc_<body>.<sig> (src/utils/token.ts isValidTokenFormat)
 
 if (!existsSync(EXTENSION_PATH)) {
   console.error('[store-screenshots] dist/ not found. Run npm.cmd run build first.')
@@ -182,22 +183,36 @@ async function addPinWithMemo(page, memo) {
   await page.waitForTimeout(250)
 }
 
-/* upload-share E2E와 동일 패턴 — 실 worker를 때리지 않는 fetch mock */
-async function installShareMock(page) {
-  await page.evaluate((mockUrl) => {
-    const w = window
-    const real = w.fetch
-    w.fetch = async (input, init) => {
-      const url = typeof input === 'string' ? input : input.url
-      if (url.includes('/upload')) {
-        return new Response(JSON.stringify({ id: 'k3x9q2', url: mockUrl }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        })
+/* 실 worker를 때리지 않는 fetch mock — 0.4.2+ 비공개 저장 계약(/token · POST /captures · GET /captures) */
+async function installPrivateSaveMock(page) {
+  await page.evaluate(
+    ({ token, captureId }) => {
+      const w = window
+      const real = w.fetch
+      const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
+      const json = (body, status = 200) =>
+        new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+      w.fetch = async (input, init) => {
+        const url = typeof input === 'string' ? input : input.url
+        const method = (init && init.method) || 'GET'
+        if (url.endsWith('/token') && method === 'POST') return json({ token })
+        if (/\/captures(\?|$)/.test(url) && method === 'POST') return json({ id: captureId, expiresAt })
+        if (/\/captures(\?|$)/.test(url) && method === 'GET')
+          return json([
+            {
+              id: captureId,
+              createdAt: new Date().toISOString(),
+              url: 'https://example.com/issues',
+              title: 'Issue Board',
+              captureType: 'visible',
+              pinCount: 1
+            }
+          ])
+        return real(input, init)
       }
-      return real(input, init)
-    }
-  }, SHARE_MOCK_URL)
+    },
+    { token: MOCK_TOKEN, captureId: MOCK_CAPTURE_ID }
+  )
 }
 
 async function capturePanelState(
@@ -567,7 +582,9 @@ async function main() {
       await capturePanelState(context, sw, extensionId, async (page) => {
         await captureVisible(page)
         await addPinWithMemo(page, 'CTA 버튼 정렬이 깨짐')
-        await page.locator('.context-pack-panel').scrollIntoViewIfNeeded()
+        await page.locator('.pin-memo__row .pin-memo__kind').first().click()
+        await page.waitForTimeout(200)
+        await page.locator('.context-pack-panel__summary').scrollIntoViewIfNeeded()
         await page.waitForTimeout(250)
       })
     )
@@ -589,21 +606,26 @@ async function main() {
       })
     )
 
-    /* ④ 익명 공유: fetch mock → 동의 → 공유 성공 토스트 (실 worker 미접촉) */
+    /* ④ 내 AI에 저장: fetch mock → 동의 → 저장 성공 안내 + 기록 항목 "저장됨" 배지 (실 worker 미접촉) */
     panelShots.push(
       await capturePanelState(context, sw, extensionId, async (page) => {
-        await installShareMock(page)
+        await installPrivateSaveMock(page)
         await captureVisible(page)
-        const shareBtn = page
-          .locator('.image-actions__share-row button')
-          .filter({ hasText: '공유 링크' })
-          .first()
-        await shareBtn.scrollIntoViewIfNeeded()
-        await shareBtn.click()
+        await addPinWithMemo(page, '이 화면을 내 코딩 AI가 보게')
+        const saveBtn = page.getByRole('button', { name: '내 AI에 저장' })
+        await saveBtn.scrollIntoViewIfNeeded()
+        await saveBtn.click()
         await page.waitForTimeout(300)
         const consent = page.locator('.snap-confirm__btn--primary')
         if ((await consent.count()) > 0) await consent.click()
-        await page.waitForTimeout(600)
+        await page.locator('.toast--info', { hasText: '내 AI에 저장됨' }).first().waitFor({ state: 'visible', timeout: 8000 })
+        await page.locator('.capture-history__save-badge--saved').first().waitFor({ state: 'visible', timeout: 8000 })
+        // 기록 목록의 "저장됨" 배지가 프레임 안에 오도록 — 내부 스크롤 컨테이너까지 포함해 중앙 정렬
+        await page.evaluate(() => {
+          const badge = document.querySelector('.capture-history__save-badge--saved')
+          if (badge) badge.scrollIntoView({ block: 'center', inline: 'nearest' })
+        })
+        await page.waitForTimeout(400)
       })
     )
 
@@ -635,11 +657,11 @@ async function main() {
         eyebrow: 'AI 컨텍스트',
         title: '캡처 한 번,\n프롬프트 완성',
         subtitle:
-          '캡처와 동시에 화면·핀 주석·출처 정보가 AI에 붙여넣을 컨텍스트로 정리됩니다.',
+          '캡처와 동시에 화면·핀 메모·출처가 AI에 붙여넣을 컨텍스트 팩으로 정리되고, 무엇이 복사되는지 요약 카드로 먼저 보여줍니다.',
         bullets: [
-          '화면 + 핀 주석 + 출처 자동 정리',
+          '화면 + 핀 메모(버그 / 참고) + 출처 자동 정리',
           'ChatGPT·Claude에 바로 붙여넣기',
-          '설명을 다시 쓸 필요가 없습니다'
+          '복사한 뒤 다음 행동을 한 줄로 안내'
         ],
         panelCap: '캡처 → 컨텍스트 팩'
       },
@@ -663,27 +685,27 @@ async function main() {
         eyebrow: '프롬프트 템플릿',
         title: '버그 리포트를\n템플릿으로',
         subtitle:
-          '버그 리포트·리팩토링·레퍼런스 템플릿이 캡처 컨텍스트를 작업 지시문으로 바꿉니다.',
+          '버그 리포트·리팩토링·레퍼런스 템플릿이 캡처를 짧은 작업 지시문으로 바꿉니다. 상세 환경 정보는 버그 핀일 때만 붙습니다.',
         bullets: [
           '버그 · 리팩토링 · 레퍼런스 템플릿',
-          'Context Pack JSON 동봉',
+          '컨텍스트 팩 JSON 동봉',
           '클립보드 한 번에 복사'
         ],
         panelCap: '프롬프트 + JSON'
       },
       {
-        file: '04-share-link.png',
+        file: '04-private-save.png',
         num: '04',
-        eyebrow: '익명 공유',
-        title: '로그인 없이,\n정해둔 기간 뒤 사라집니다',
+        eyebrow: '내 AI에 저장',
+        title: '내 코딩 AI가\n직접 불러옵니다',
         subtitle:
-          '공유 링크를 만들 때만 업로드됩니다. 선택한 보관 기간(1·7·30일)이 지나면 접근이 차단되고 서버에서도 영구 삭제됩니다.',
+          '"내 AI에 저장"을 누를 때만 전송됩니다. 공개 링크는 만들지 않고, 연결 토큰을 가진 Claude Code·Cursor·Codex만 내 캡처를 읽습니다. 1·7·30일 뒤 삭제되고 즉시 삭제도 됩니다.',
         bullets: [
-          '계정 · 로그인 · 추적 없음',
-          '컨텍스트 포함은 기본 꺼짐 + 동의제',
-          '쿠키·타 사이트 인증 정보·로컬 데이터 전송 안 함'
+          '공개 링크 없음 · 계정 · 로그인 · 추적 없음',
+          '보관 기간 1·7·30일 + 즉시 삭제',
+          '저장됨 / 실패 배지 — 조용히 실패하지 않습니다'
         ],
-        panelCap: '공유 링크 · 보관 기간 선택'
+        panelCap: '내 AI에 저장 · 완료 안내 1줄'
       },
       {
         file: '05-shortcuts-help.png',

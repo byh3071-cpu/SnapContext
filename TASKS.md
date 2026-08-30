@@ -2,14 +2,10 @@
 
 ## Active
 
-- [ ] **P0 — 0.4.6 마감: 수동 QA → tag v0.4.6** (2026-08-30 PR #25·#26·#27 머지 완료, master=0.4.6·173 passed, 계획 `goals/6-046-ux-polish-plan.md`)
-  - 남은 사람 게이트: `pnpm dogfood:up` 첫 15초 흐름 + 실패 배지 재현 ★ → tag `v0.4.6` ★ → `vhk goal done --id 6`.
-  - 독푸딩 보고서 3종: `docs/dogfood/2026-08-30-report-1-ops-manual-feedback.md`(정본별 52건+) · `docs/log/2026-08-30-0.4.6-orchestration-worklog.md` · `docs/dogfood/2026-08-30-report-3-worker-report-contract.md`.
+- [x] **P0 — 0.4.6 마감 완료 (2026-08-30)** — PR #25·#26·#27 머지 → master 0.4.6 → QA(qa046 30/30·verify 18/18·qa043 33/33·E2E 6/6·vitest 173) → **tag v0.4.6** push. 계획 `goals/6-046-ux-polish-plan.md`, 일지 `docs/log/2026-08-30-0.4.6-orchestration-worklog.md`.
 
-- [ ] **P0 — 재심사 준비: 스토어 킷 재작성 (tag 전 필수, 0.4.6 critic 발견 DF-57)**
-  - `scripts/generate-store-screenshots.mjs` scene ④가 0.4.2에서 폐지된 "익명 공유·공유 링크·7일 업로드"를 광고 + 금지어(핀 주석·Context Pack). `docs/store/listing-0.2.0-draft.md`도 동일.
-  - 0.4.2/0.4.4 프라이빗 전환("내 AI에 저장"·서명 URL·`/s` 폐쇄) 기준으로 스크린샷 시나리오·스토어 문구 재작성 → 용어 사전 준수 → 생성기 실행 확인. 재심사 제출물의 허위 광고 방지.
-  - 완료 조건에 **`scripts/check-goal-6.mjs`의 `docs/store/` 게이트 제외 해제**를 포함(critic: 제외가 이월 항목을 영구 무검사로 만듦). 생성기(`generate-store-screenshots.mjs`)도 금지어 검사 대상에 편입.
+- [ ] **P0 — 스토어 일괄 재심사 제출 (사람 게이트)** — 킷 완료(2026-08-30): `docs/store/listing-0.4.6.md`(Chrome·Whale 문구·업데이트 노트·Privacy) · `docs/store/submit-kit-0.4.6.md`(zip은 python zipfile 슬래시 경로 PAT-001·절차·사전 확인 6항) · 스크린샷 5장 재생성(04 = 내 AI에 저장). 옛 킷은 `docs/store/archive/`, 게이트는 현행 킷·생성기 문자열까지 검사.
+  - 남은 것: `pnpm build`(프로덕션) → zip → Chrome/Whale 대시보드 제출 → 승인 후 changelog·로드맵 표기.
 
 - [x] **P0 — 0.4.2 릴리즈 실행** — 2026-08-17 0.4.4 배포로 잔여 소화(production 배포 겸행·PRIVACY 410 현행화 공개 완료). v0.4.2 단독 태그는 생략(v0.4.3 태그 존재로 무의미).
   - 선택(권장) 잔존: staging TOKEN_SIGNING_SECRET 회전(smoke 토큰 일괄 무효화).

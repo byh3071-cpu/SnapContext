@@ -173,9 +173,12 @@ for (const p of walkFiles('src', (f) => SRC_EXT.test(f))) {
 must(srcHits.length === 0, `src 문자열 리터럴 금지어 0건 (현재 ${srcHits.length}건: ${srcHits.slice(0, 3).join(', ')})`)
 
 const uiHits = []
-for (const p of [...walkFiles('prompts', (f) => f.endsWith('.md')), 'README.md'].filter(existsSync)) {
+for (const p of [...walkFiles('prompts', (f) => f.endsWith('.md')), 'README.md', 'scripts/generate-store-screenshots.mjs'].filter(existsSync)) { // 스토어 이미지 카피도 사용자 노출 문구
   const rel = p.replace(/\\/g, '/')
-  if (SRC_UI_FORBIDDEN.test(readFileSync(p, 'utf-8'))) uiHits.push(rel)
+  const text = readFileSync(p, 'utf-8')
+  // .mjs(스토어 생성기)는 코드 주석이 아니라 사용자 노출 문자열 리터럴만 본다(src 와 같은 기준)
+  const hit = /\.mjs$/.test(rel) ? extractStringLiterals(text).some((t) => SRC_UI_FORBIDDEN.test(t)) : SRC_UI_FORBIDDEN.test(text)
+  if (hit) uiHits.push(rel)
 }
 must(uiHits.length === 0, `prompts·README 금지어 0건 (현재 ${uiHits.length}건: ${uiHits.slice(0, 3).join(', ')})`)
 
@@ -186,7 +189,7 @@ const docsExcluded = (rel) =>
   rel.includes('docs/dogfood/') ||
   rel.includes('docs/patterns/') || // PAT 문서는 증상으로 금지어를 인용한다(PAT-004)
   rel.includes('docs/tickets/') ||
-  rel.includes('docs/store/') ||
+  rel.includes('docs/store/archive/') || // 과거 스토어 문구·제출 킷은 기록(옛 기능 서술) — 현행 킷은 검사 대상
   rel.includes('docs/ui-audit/')
 
 const docsHits = []

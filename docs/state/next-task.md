@@ -118,3 +118,13 @@ TASK: 0.4.6 — 수동 QA → tag v0.4.6 (사람 게이트 2개)
   lesson: 스택 PR + squash 머지는 충돌 유발(DF-60) → 다음엔 --merge 또는 하위 머지 후 rebase
 ```
 
+## 2026-08-30 (5) — QA·tag·재심사 킷 완료 → 스토어 제출만 남음
+
+```text
+TASK: 스토어 일괄 재심사 제출 (0.4.2+0.4.3+0.4.6)
+  status: BLOCKED_ON_HUMAN (대시보드 제출)
+  done: qa046 30/30 · dogfood:verify 18/18 · qa043 33/33 · tag v0.4.6 (648afa4) · 킷 docs/store/{listing,submit-kit}-0.4.6.md · 스크린샷 5장(04-private-save) · 게이트 docs/store 현행 검사
+  next_human: docs/store/submit-kit-0.4.6.md §1(pnpm build → zip) → §2 Chrome → §3 Whale
+  note: dogfood:up 이후 dist는 로컬 endpoint 빌드 — 제출 전 반드시 pnpm build 재실행(킷 §1 경고)
+```
+
