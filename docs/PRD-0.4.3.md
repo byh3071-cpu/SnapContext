@@ -42,7 +42,7 @@ tags: [annotation, redaction, token, extension, v0.4.3]
 
 - 설정 영역에 `토큰 재발급` 버튼 → `POST /token`으로 새 `sc_` 발급·로컬 교체 (src/utils/token.ts + 설정 UI).
 - 정직 고지 문구: "이전 토큰은 기존 캡처가 만료(최대 30일)될 때까지 유효".
-- worker 무변경. 완전 revoke(D1 denylist)는 0.4.6 — ADR-020에 이연 근거 기록.
+- worker 무변경. 완전 revoke는 0.4.7 — ADR-020 이연 → ADR-022 A+로 대체(2026-08-30 정정).
 
 ## 확정된 결정 (2026-08-16 요한 A·A·A + 조사 검증)
 
@@ -56,7 +56,7 @@ tags: [annotation, redaction, token, extension, v0.4.3]
 
 ## 비목표
 
-- 완전 revoke·발급 대장(→ 0.4.6) · owner 재매핑 (TTL 자가치유)
+- 완전 revoke(→ 0.4.7, ADR-022) · owner 재매핑 (TTL 자가치유)
 - `/s` 제거·서명 `/i` 강제(→ 0.4.4) · worker 변경 일체
 - 스토어 재심사 제출 — **0.4.5 완료 후 1회 일괄** (요한 결정 2026-08-16, 구 "재심사 #2" 폐기)
 - 텍스트 박스·도형 라이브러리·색상 팔레트 확장 (0.5+ 후보)

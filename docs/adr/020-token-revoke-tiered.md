@@ -5,7 +5,7 @@ status: accepted
 tags: [security, token, revoke, extension, v0.4.3]
 ---
 
-# ADR-020: 토큰 revoke 2단계 — 지금은 재발급 lite, denylist는 0.4.6으로 이연
+# ADR-020: 토큰 revoke 2단계 — 지금은 재발급 lite, denylist는 0.4.7로 이연 (2026-08-30 정정: ADR-022 A+로 대체 — denylist는 B안 트리거로 보류)
 
 ## 상태
 
@@ -18,7 +18,7 @@ tags: [security, token, revoke, extension, v0.4.3]
 ## 범위와 비범위
 
 - 범위: 0.4.3의 재발급(lite) 계약, 완전 revoke의 이연 근거
-- 비범위: 완전 revoke·발급 대장 구현(→ 0.4.6), owner 재매핑
+- 비범위: 완전 revoke·발급 대장 구현(→ 0.4.7, ADR-022에서 A+로 대체), owner 재매핑
 
 ## 맥락
 
@@ -31,7 +31,7 @@ tags: [security, token, revoke, extension, v0.4.3]
 1. **Tier 1 (0.4.3, 이번)** — 재발급 lite: 설정에 `토큰 재발급` 버튼. `POST /token`으로 새 `sc_`를 받아 로컬 교체. worker 무변경.
    - 새 캡처는 새 owner로 저장되고, 옛 토큰이 읽을 수 있는 것은 옛 캡처뿐 → TTL(≤30일)로 자연 소멸 = 사실상 revoke.
    - UI에 정직 고지: "이전 토큰은 기존 캡처가 만료될 때까지(최대 30일) 유효".
-2. **Tier 2 (0.4.6, 이연)** — D1 `owners` 발급 대장 + denylist로 완전 revoke·재발급 UI.
+2. **Tier 2 (0.4.7로 이연 → ADR-022에서 A+ 채택, denylist는 트리거 발생 시)** — D1 `owners` 발급 대장 + denylist로 완전 revoke·재발급 UI.
 
 ## 이연 근거
 
@@ -42,4 +42,4 @@ tags: [security, token, revoke, extension, v0.4.3]
 ## 결과
 
 - 유출 대응 최소선 확보(30일 창), 비용 0·마이그레이션 0.
-- 0.4.6 착수 시 이 문서의 Tier 2 스케치가 출발점.
+- 0.4.7 착수 시 ADR-022가 출발점(이 문서의 Tier 2 스케치는 B안 트리거 발생 시 재개).

@@ -130,3 +130,16 @@ TASK: 스토어 일괄 재심사 제출 (0.4.2+0.4.3+0.4.6)
   zip: python scripts/pack-store-zip.py 실측 18 files·'/' 경로·로컬 endpoint 거부 경로 동작 확인(critic 격리 실증)
 ```
 
+## 2026-08-30 (6) — 0.4.7 착수 준비: 리서치·결정문·PRD·계획 영수증 (결재 대기)
+
+```text
+TASK: 0.4.7 연결 토큰 무효화 완성형 — 계획 승인
+  status: BLOCKED_ON_HUMAN (결재 R1~R6)
+  decision_so_far: 요한 "리서치 해서, B로 ㄱ" → 순서 B = 0.4.7을 0.4.5(도메인)와 분리해 먼저, 스토어 일괄 제출은 0.4.7 랜딩 후 1회
+  design: ADR-022 A+ (proposed) — 토큰 v2(rand16‖exp‖kid, HMAC kid 비밀) · owner=SHA-256(토큰) 유지 · POST /token/rotate = 새 토큰 + UPDATE captures.owner(1회) · OBJECT_KEY_SECRET 분리(R2 키가 서명 비밀에 종속 — 회전 시 경로 소실 방지) · 자동 갱신 없음(AI 도구 정적 설정) · 만료 90일 + 유예 30일 rotate-only · v1은 0.4.7 한 릴리즈 유예
+  entry: goals/7-047-token-revoke-plan.md → docs/PRD-0.4.7.md → docs/adr/022 → docs/research/token-revoke-research-2026-08-30.md
+  waves: W0 정비(완료: 로드맵 순서·ADR-020 참조 정정·TASKS) → W1 서버 T1→T3→T2(grok 1 worktree) → W2 확장 T4+T5 ∥ 문구 T6 → W3 T7 마감·qa-047·런북 → W4 사람(시크릿 2+vars 1 → 서버 배포 → 스모크 → tag v0.4.7 → 일괄 제출)
+  human_gates: R1~R6 결재 → PR 머지 3회 → OBJECT_KEY_SECRET(=현재 서명 비밀 값)·TOKEN_KID=0 등록 → wrangler deploy → tag → 제출
+  next_ai: 승인 시 vhk mission set(worker 허용·배포/시크릿 금지) → vhk goal sync(check-goal-7 백필) → Orca Run → W1 기동(manual-send)
+```
+
