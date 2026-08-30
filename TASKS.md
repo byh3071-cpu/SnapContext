@@ -2,8 +2,8 @@
 
 ## Active
 
-- [ ] **P0 — 0.4.6 마감: PR 3개 머지 → 수동 QA → tag v0.4.6** (2026-08-30 W3 critic 진행, 계획 `goals/6-046-ux-polish-plan.md`)
-  - PR #25(W1) → #26(W2, 스택) → #27(W3, 예정) 순서 머지 ★ → `pnpm dogfood:up` 첫 15초 흐름 + 실패 배지 재현 ★ → tag ★.
+- [ ] **P0 — 0.4.6 마감: 수동 QA → tag v0.4.6** (2026-08-30 PR #25·#26·#27 머지 완료, master=0.4.6·173 passed, 계획 `goals/6-046-ux-polish-plan.md`)
+  - 남은 사람 게이트: `pnpm dogfood:up` 첫 15초 흐름 + 실패 배지 재현 ★ → tag `v0.4.6` ★ → `vhk goal done --id 6`.
   - 독푸딩 보고서 3종: `docs/dogfood/2026-08-30-report-1-ops-manual-feedback.md`(정본별 52건+) · `docs/log/2026-08-30-0.4.6-orchestration-worklog.md` · `docs/dogfood/2026-08-30-report-3-worker-report-contract.md`.
 
 - [ ] **P0 — 재심사 준비: 스토어 킷 재작성 (tag 전 필수, 0.4.6 critic 발견 DF-57)**

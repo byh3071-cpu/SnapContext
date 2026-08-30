@@ -105,3 +105,16 @@ TASK: 0.4.6 마감 — PR 3개 머지 → 수동 QA → tag
   worktrees: master · 046-w1 · 046-w2 · 046-w3 (머지 후 제거)
 ```
 
+## 2026-08-30 (4) — PR 3개 머지 완료, master = 0.4.6
+
+```text
+TASK: 0.4.6 — 수동 QA → tag v0.4.6 (사람 게이트 2개)
+  status: BLOCKED_ON_HUMAN
+  merged: #25 (S1) → #26 (07daf72) → #27 (35a9774) squash + 지휘 문서 merge dafdb12 → master 0.4.6
+  evidence(master): vitest 23 files / 173 passed · tsc 0 · build OK(version-sync 0.4.6) · vhk check --goal 6 ✓ · BOM 0
+  next_human: 1) pnpm dogfood:up → 첫 15초 흐름(캡처→핀 버그/참고→요약 카드→복사→안내) + 실패 배지 재현  2) git tag v0.4.6 && git push origin v0.4.6  3) vhk goal done --id 6
+  carry_over: 재심사 준비(스토어 킷 재작성 + docs/store 게이트 제외 해제, TASKS P0) · 0.4.7 후보(upload-share E2E·CIM flaky·UI 배선 Playwright·SPEC JSON 예시)
+  cleanup_done: Orca worktree 전부 제거(master만) · 로컬/원격 046-* 브랜치 삭제 · Orca Run run_2865210e30b6 워커 전원 release
+  lesson: 스택 PR + squash 머지는 충돌 유발(DF-60) → 다음엔 --merge 또는 하위 머지 후 rebase
+```
+
