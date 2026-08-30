@@ -183,7 +183,8 @@ const docsExcluded = (rel) =>
   rel === 'docs/GLOSSARY.md' ||
   rel === 'docs/PRD-0.4.6.md' ||
   rel === 'docs/로드맵.md' ||
-  rel.includes('docs/dogfood/', 'docs/patterns/' /* PAT 문서는 증상으로 금지어를 인용한다(PAT-004) */) ||
+  rel.includes('docs/dogfood/') ||
+  rel.includes('docs/patterns/') || // PAT 문서는 증상으로 금지어를 인용한다(PAT-004)
   rel.includes('docs/tickets/') ||
   rel.includes('docs/store/') ||
   rel.includes('docs/ui-audit/')
