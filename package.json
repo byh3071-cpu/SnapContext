@@ -21,6 +21,7 @@
     "dogfood:up": "node scripts/dogfood/up.mjs",
     "dogfood:verify": "node tests/e2e/dogfood/verify.mjs",
     "dogfood:qa043": "node tests/e2e/dogfood/qa-043.mjs",
+    "dogfood:qa046": "node tests/e2e/dogfood/qa-046.mjs",
     "test:e2e": "node tests/e2e/smoke.mjs",
     "test:e2e:all": "node tests/e2e/smoke.mjs && node tests/e2e/pin-flow.mjs && node tests/e2e/loaded-pack-pin.mjs && node tests/e2e/pin-delete.mjs && node tests/e2e/coverage.mjs && node tests/e2e/full-page-shortcut.mjs && node tests/e2e/upload-share.mjs",
     "store:screenshots": "node scripts/generate-store-screenshots.mjs",
