@@ -23,24 +23,24 @@ Context Pack은 캡처한 화면 + 주석 + 메타데이터를 AI가 바로 이�
 "height": 1080,
 "selectedElement": "div.card > .chart-container"
 },
-"pins": [
-{
-"id": 1,
-"x": 45.2,
-"y": 30.8,
-"memo": "이 차트의 Y축 라벨이 잘림"
-},
-{
-"id": 2,
-"x": 72.1,
-"y": 55.0,
-"memo": "hover 시 툴팁이 뒤에 가려짐"
-}
-],
 "context": {
 "userNote": "대시보드 차트 영역 UI 이슈 2건",
 "tags": ["ui-bug", "chart", "dashboard"]
+},
+"annotations": [
+{
+"id": 1,
+"position": { "x": 45.2, "y": 30.8 },
+"memo": "이 차트의 Y축 라벨이 잘림",
+"kind": "ref"
+},
+{
+"id": 2,
+"position": { "x": 72.1, "y": 55.0 },
+"memo": "hover 시 툴팁이 뒤에 가려짐",
+"kind": "bug"
 }
+]
 }
 
 ## 필드 설명
@@ -62,13 +62,12 @@ Context Pack은 캡처한 화면 + 주석 + 메타데이터를 AI가 바로 이�
 | height | number | 이미지 높이 (px) |
 | selectedElement | string? | Element Capture일 때 CSS selector |
 
-### pins
+### annotations
 | 필드 | 타입 | 설명 |
 |------|------|------|
 | id | number | 핀 번호 (1부터 순차) |
-| x | number | 이미지 내 상대 X 좌표 (%, 0-100) |
-| y | number | 이미지 내 상대 Y 좌표 (%, 0-100) |
-| memo | string | 사용자 메모 |
+| position | object | `{ x, y }` — 이미지 내 상대 좌표 (%, 0-100) |
+| memo | string \| null | 사용자 메모 |
 | kind | `'bug' \| 'ref'` | optional, 없으면 `ref`, 0.4.6 도입 |
 
 ### context

@@ -4,7 +4,7 @@
 date: 2026-05-07
 tags: [adr, messaging, context-pack, metadata]
 
-# ADR 003: 캡쳐 메타데이터 수집과 `GET_PAGE_META` 패턴
+# ADR 003: 캡처 메타데이터 수집과 `GET_PAGE_META` 패턴
 
 ## 상태
 

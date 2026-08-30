@@ -6,7 +6,8 @@
 // Env: VHK_GATES_SKIP_DEEP=1  → test + build 스킵 (빠른 typecheck-only 패스)
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 
 const SHIM = new Set(['pnpm', 'npm', 'npx', 'yarn'])
 // cmd.exe /c 래핑 경로는 따옴표+&|<>^% 조합 인자로 인용 경계를 탈출당할 수 있다(CVE-2024-27980
@@ -60,9 +61,176 @@ if (!skipDeep) {
   if (scripts.build) gate('build', run(pm, ['run', 'build']))
 }
 
-// ─── goal 6 고유 검증 (직접 추가) ───────────────────────────────
-// const read = (p) => existsSync(p) ? readFileSync(p, 'utf-8') : null
-// must(read('src/foo.ts')?.includes('bar'), 'foo.ts 에 bar 존재')
+// ─── goal 6 고유 검증 (T4b · W3-fix) ────────────────────────────
+const walkFiles = (dir, pred) => {
+  const out = []
+  if (!existsSync(dir)) return out
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) out.push(...walkFiles(p, pred))
+    else if (pred(p)) out.push(p)
+  }
+  return out
+}
+
+// 문자 단위 파서: 코드 / ' / " / ` / // / /* */. 이스케이프·템플릿 ${} 중첩 처리.
+// 문자열 리터럴만 모은다(식별자·주석은 자연 제외).
+const extractStringLiterals = (src) => {
+  const out = []
+  const n = src.length
+  const parseQuoted = (start, quote) => {
+    let i = start + 1
+    let buf = ''
+    while (i < n) {
+      const c = src[i]
+      if (c === '\\') {
+        buf += c + (src[i + 1] ?? '')
+        i += 2
+        continue
+      }
+      if (c === quote) return [buf, i + 1]
+      buf += c
+      i++
+    }
+    return [buf, i]
+  }
+  const parseCode = (start, untilBrace) => {
+    let i = start
+    while (i < n) {
+      const c = src[i]
+      const next = src[i + 1]
+      if (untilBrace && c === '}') return i
+      if (c === '/' && next === '/') {
+        i += 2
+        while (i < n && src[i] !== '\n') i++
+        continue
+      }
+      if (c === '/' && next === '*') {
+        i += 2
+        while (i < n - 1 && !(src[i] === '*' && src[i + 1] === '/')) i++
+        i = Math.min(i + 2, n)
+        continue
+      }
+      if (c === "'" || c === '"') {
+        const [str, end] = parseQuoted(i, c)
+        out.push(str)
+        i = end
+        continue
+      }
+      if (c === '`') {
+        i = parseTemplate(i)
+        continue
+      }
+      if (untilBrace && c === '{') {
+        i = parseCode(i + 1, true)
+        if (src[i] === '}') i++
+        continue
+      }
+      i++
+    }
+    return i
+  }
+  const parseTemplate = (start) => {
+    let i = start + 1
+    let buf = ''
+    while (i < n) {
+      const c = src[i]
+      if (c === '\\') {
+        buf += c + (src[i + 1] ?? '')
+        i += 2
+        continue
+      }
+      if (c === '`') {
+        out.push(buf)
+        return i + 1
+      }
+      if (c === '$' && src[i + 1] === '{') {
+        out.push(buf)
+        buf = ''
+        i = parseCode(i + 2, true)
+        if (src[i] === '}') i++
+        continue
+      }
+      buf += c
+      i++
+    }
+    out.push(buf)
+    return i
+  }
+  parseCode(0, false)
+  return out
+}
+
+const SRC_UI_FORBIDDEN = /캡쳐|스냅샷|스크린샷|주석|어노테이션|업로드|공유|프롬프트 팩|Context Pack/
+const DOCS_FORBIDDEN = /캡쳐|스냅샷|프롬프트 팩/
+const SRC_EXT = /\.(?:ts|tsx|js)$/
+
+const srcHits = []
+for (const p of walkFiles('src', (f) => SRC_EXT.test(f))) {
+  const strings = extractStringLiterals(readFileSync(p, 'utf-8'))
+  if (strings.some((s) => SRC_UI_FORBIDDEN.test(s))) srcHits.push(p.replace(/\\/g, '/'))
+}
+must(srcHits.length === 0, `src 문자열 리터럴 금지어 0건 (현재 ${srcHits.length}건: ${srcHits.slice(0, 3).join(', ')})`)
+
+const uiHits = []
+for (const p of [...walkFiles('prompts', (f) => f.endsWith('.md')), 'README.md'].filter(existsSync)) {
+  const rel = p.replace(/\\/g, '/')
+  if (SRC_UI_FORBIDDEN.test(readFileSync(p, 'utf-8'))) uiHits.push(rel)
+}
+must(uiHits.length === 0, `prompts·README 금지어 0건 (현재 ${uiHits.length}건: ${uiHits.slice(0, 3).join(', ')})`)
+
+const docsExcluded = (rel) =>
+  rel === 'docs/GLOSSARY.md' ||
+  rel === 'docs/PRD-0.4.6.md' ||
+  rel === 'docs/로드맵.md' ||
+  rel.includes('docs/dogfood/') ||
+  rel.includes('docs/tickets/') ||
+  rel.includes('docs/store/') ||
+  rel.includes('docs/ui-audit/')
+
+const docsHits = []
+for (const p of walkFiles('docs', (f) => f.endsWith('.md'))) {
+  const rel = p.replace(/\\/g, '/')
+  if (docsExcluded(rel)) continue
+  if (DOCS_FORBIDDEN.test(readFileSync(p, 'utf-8'))) docsHits.push(rel)
+}
+must(docsHits.length === 0, `docs 캡쳐|스냅샷|프롬프트 팩 0건 (현재 ${docsHits.length}건: ${docsHits.slice(0, 5).join(', ')})`)
+
+must(existsSync('docs/GLOSSARY.md'), 'docs/GLOSSARY.md 존재')
+
+const readGoalVersion = () => {
+  const p = 'goals/6-046-ux-polish.md'
+  if (!existsSync(p)) {
+    must(false, 'goals/6-046-ux-polish.md 없음 — 버전 비교 불가')
+    return null
+  }
+  const text = readFileSync(p, 'utf-8')
+  const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  if (!fm) {
+    must(false, 'goals/6-046-ux-polish.md frontmatter 없음 — 버전 비교 불가')
+    return null
+  }
+  const line = fm[1].match(/^version:\s*(\S+)/m)
+  if (!line) {
+    must(false, 'goals/6-046-ux-polish.md version 필드 없음 — 버전 비교 불가')
+    return null
+  }
+  return line[1].replace(/^v/i, '')
+}
+
+const goalVer = readGoalVersion()
+const manifestVer = existsSync('manifest.json') ? readJson('manifest.json').version : null
+const lock = existsSync('package-lock.json') ? readJson('package-lock.json') : null
+const lockTop = lock?.version ?? null
+const lockPkg = lock?.packages?.['']?.version ?? null
+must(
+  goalVer !== null &&
+    pkg.version === goalVer &&
+    manifestVer === goalVer &&
+    lockTop === goalVer &&
+    lockPkg === goalVer,
+  `버전 4값 ${goalVer ?? '(없음)'} (package=${pkg.version}, manifest=${manifestVer}, lock.top=${lockTop}, lock.packages[""]=${lockPkg})`
+)
 
 if (pass) { console.log('✅ goal 6 gate passes'); process.exit(0) }
 console.log('❌ goal 6 gate failed'); process.exit(1)

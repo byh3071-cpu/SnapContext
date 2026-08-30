@@ -6,7 +6,7 @@ tags: [readme, snapcontext]
 
 # SnapContext
 
-Chrome·Whale MV3 확장 — 화면 캡처, 핀 주석, AI용 Context Pack 생성.
+Chrome·Whale MV3 확장 — 화면 캡처, 핀 메모, AI용 컨텍스트 팩 생성.
 
 스토어 게시 버전은 v0.3.0(Chrome·Whale 심사 통과)이고, 현재 v0.4.2(Private-by-Design)를 개발 중이다.
 
@@ -26,7 +26,7 @@ Chrome·Whale MV3 확장 — 화면 캡처, 핀 주석, AI용 Context Pack 생�
 
 캡처를 AI에 전달하는 방법은 두 가지다.
 
-1. **사람 직접 전달** — 캡처·Context Pack을 복사해 AI 대화에 직접 붙여넣는다. 서버 저장 없이 동작한다.
+1. **사람 직접 전달** — 캡처·컨텍스트 팩을 복사해 AI 대화에 직접 붙여넣는다. 서버 저장 없이 동작한다.
 2. **MCP 저장** — 확장의 `내 AI에 저장`으로 캡처를 서버에 올리고, MCP 툴(`snap_history`·`snap_pack`·`snap_analyze`)로 AI 클라이언트(Claude Code·Cursor·Codex)가 조회한다. 0.4.2부터 캡처는 소유자 토큰(`sc_`)으로 격리되며, 이미지 접근은 서명 URL을 쓴다.
 
 MCP 등록은 `scripts/register-mcp.ps1`을 사용한다. 기본값은 production Worker이므로 로컬 검증에는 `-Local` 스위치를 쓴다. 토큰은 환경 변수(`SNAPCONTEXT_MCP_TOKEN`)로만 전달하고, 환경 변수를 바꾼 뒤에는 터미널·에디터를 완전히 재시작해야 반영된다.
@@ -72,4 +72,4 @@ pnpm store:screenshots
 
 주요 코드는 `src/` 아래이며, 메시지 허브는 `src/background/service-worker.ts`, 사이드 패널은 `src/sidepanel/`이다.
 
-스토어 스크린샷(1280×800)은 `docs/store/chrome-web-store/screenshots/`에 있다.
+스토어 등록 이미지(1280×800)는 `docs/store/chrome-web-store/screenshots/`에 있다.

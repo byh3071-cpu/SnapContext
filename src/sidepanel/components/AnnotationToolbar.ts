@@ -55,7 +55,7 @@ export function mountAnnotationToolbar(
   const toolbar = document.createElement('div')
   toolbar.className = 'anno-toolbar'
   toolbar.setAttribute('role', 'toolbar')
-  toolbar.setAttribute('aria-label', '주석 도구')
+  toolbar.setAttribute('aria-label', '그리기 도구')
 
   const toolButtons = new Map<AnnotationTool, HTMLButtonElement>()
 
@@ -81,7 +81,7 @@ export function mountAnnotationToolbar(
   undoBtn.type = 'button'
   undoBtn.className = 'anno-btn anno-btn--undo'
   undoBtn.dataset.action = 'undo'
-  undoBtn.title = '실행취소 (마지막 주석 제거)'
+  undoBtn.title = '실행취소 (마지막 그리기 제거)'
   undoBtn.setAttribute('aria-label', '실행취소')
   undoBtn.append(swissIcon('undo', 'ic-sm'))
   toolbar.append(undoBtn)
