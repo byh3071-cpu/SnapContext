@@ -1,3 +1,4 @@
+import { pinKind } from '../../context-pack/pin-kind'
 import type { PinItem } from '../../types'
 import { swissIcon } from '../utils/swiss-icons'
 
@@ -139,10 +140,15 @@ export function mountImageLightbox(
       if (pin.id === activePinId) {
         badge.classList.add('pin-badge--active')
       }
+      const kind = pinKind(pin)
+      if (kind === 'bug') {
+        badge.classList.add('pin-badge--bug')
+      }
       badge.style.left = `${pin.x}%`
       badge.style.top = `${pin.y}%`
       badge.textContent = String(pin.id)
-      badge.title = `핀 ${pin.id} (클릭하면 삭제)`
+      const kindLabel = kind === 'bug' ? '버그' : '참고'
+      badge.title = `핀 ${pin.id} · ${kindLabel} (클릭하면 삭제)`
       badge.dataset.pinId = String(pin.id)
       pinContainer.appendChild(badge)
     }

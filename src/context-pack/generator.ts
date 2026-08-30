@@ -6,6 +6,7 @@ import type {
   PinItem,
   ProjectProfile
 } from '../types'
+import { pinKind } from './pin-kind'
 
 export type GenerateContextPackInput = {
   imageBase64: string
@@ -49,7 +50,8 @@ export function generateContextPack(input: GenerateContextPackInput): ContextPac
     annotations: input.pins.map((p) => ({
       id: p.id,
       position: { x: p.x, y: p.y },
-      memo: p.memo.trim() ? p.memo : null
+      memo: p.memo.trim() ? p.memo : null,
+      kind: pinKind(p)
     })),
     debugLogs: input.debugLogs ?? [],
     project: input.projectProfile,

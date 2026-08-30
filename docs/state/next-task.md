@@ -4,7 +4,7 @@ _Auto-updated 2026-05-30T11:40:03.293Z via `vhk goal next`._
 
 ```
 TASK: Goal 0 — Phase 0 — 경쟁사 리서치 + 스토어 설명문
-  status: IN_PROGRESS
+  status: BLOCKED
   priority: P0
   file: goals\0-store-copy-research.md
 ```
@@ -54,3 +54,18 @@ TASK: 0.4.2 로컬 MCP 등록과 Codex 일상 dogfood 절차 문서화
     - 로컬 /token 발급과 세션 전용 SNAPCONTEXT_MCP_TOKEN 절차
     - Codex 일상 검증과 세 클라이언트 릴리즈 게이트 분리
 ```
+
+## 2026-08-29 — 0.4.6 구현 계획 영수증 제출 (Plan 승인 게이트)
+
+```text
+TASK: 0.4.6 프롬프트 UX 다듬기 — Fable 지휘 · Claude 하위모델 + Cursor 모델 Orca 오케스트레이션
+  status: BLOCKED_ON_HUMAN (계획 승인 + 결재 3건)
+  priority: P1
+  plan: goals/6-046-ux-polish-plan.md
+  spec: docs/PRD-0.4.6.md (approved 2026-08-17)
+  execution_provider: orca-ready (ORCA_CLI_COMMAND=orca · runtime/graph ready 실측 2026-08-29)
+  wave0_done: .claude 정비(설정 시크릿 제거·rules 3장·라우팅 카드 v0.5 동기화·국면 포인터) · 독푸딩 원장 개설
+  next_after_approval: mission 0.4.6 재설정 → Orca Run 생성 → 스모크 1회(Cursor NOOP) → W1(T5 ∥ T4a)
+  dogfood_ledger: docs/dogfood/2026-08-29-orchestration-ledger.md
+```
+

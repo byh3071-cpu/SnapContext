@@ -1,26 +1,30 @@
 {
   "schemaVersion": 1,
-  "objective": "SnapContext 0.4.4 구현 (worker-only, 확장 src/ 무변경) — 레거시 공개 경로 제거: /s 뷰어·무서명 /i·POST /upload를 명시 410 Gone(+Cache-Control: no-store, OPTIONS 포함)으로 교체, viewer dead code·레거시 읽기 fallback(pack.ts raw-ID·/pi·readExpiry legacy는 반드시 짝, 단독 커밋)·레거시 테스트 47+개 정리. test-first(계약 테스트 선투입 red). 근거: PRD-0.4.4 approved(2026-08-17)·ADR-015 결정#6·plan-audit 3회차. 금지: src/ 확장 변경, parseSharedContext·allowUploadRequest·lib 공유 상수 삭제, 배포·tag(사람). 사람 게이트: R2 잔존 실측·wrangler deploy·라이브 스모크·tag v0.4.4.",
+  "objective": "SnapContext 0.4.6 구현 (ext-only, worker/ 무변경) — PRD-0.4.6 approved(2026-08-17) T1~T6: payload 요약 카드·프롬프트 다이어트(스마트 디폴트)·다음 행동 안내 1줄·용어 사전 SoT(GLOSSARY)·PinItem.kind 1비트(하위호환)·저장 상태 배지 + 편승 M7(저장 착수 실패 무음 제거)·L12(toast aria-live). test-first. 웨이브 3(W1 T5+T4a / W2 T1+T3a·T2·T6+T3b / W3 T4b+버전 4값 0.4.6). 금지: worker/ 변경·템플릿 시스템 재설계·스토어 제출·배포·tag(사람). 계획 SoT: goals/6-046-ux-polish-plan.md (approved 2026-08-29, R2=A R3=A)",
   "scope": [
     "src/**",
     "tests/**",
-    "worker/**",
+    "prompts/**",
     "docs/**",
     "scripts/**",
-    "prompts/**",
-    ".vhk/mission.json",
+    "goals/**",
+    "manifest.json",
     "package.json",
     "package-lock.json",
-    "manifest.json",
     "pnpm-lock.yaml",
-    "pnpm-workspace.yaml",
-    "TASKS.md"
+    "TASKS.md",
+    "README.md",
+    "CLAUDE.md",
+    ".gitignore",
+    ".claude/rules/**",
+    ".vhk/mission.json"
   ],
   "forbidden": [
-    "worker/node_modules/**",
     "**/*.env",
-    "docs/ui-audit/**"
+    "docs/ui-audit/**",
+    "worker/**",
+    "**/.dev.vars*"
   ],
   "createdAt": "2026-06-04T13:32:15.559Z",
-  "updatedAt": "2026-08-17T00:00:00.000Z"
+  "updatedAt": "2026-08-29T00:00:00.000Z"
 }

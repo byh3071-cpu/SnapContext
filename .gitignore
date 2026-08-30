@@ -8,7 +8,8 @@ dist
 .DS_Store
 coverage
 .vite
-.claude/
+.claude/*
+!.claude/rules/
 
 # Notion API batch payloads (scratch from prior dev-log injection)
 .notion-*.json
