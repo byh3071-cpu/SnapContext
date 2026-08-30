@@ -1,36 +1,32 @@
 ---
 id: prompt-template-bug-report
-date: 2026-05-10
+date: 2026-08-29
 tags: [prompt, template]
 ---
 
 # 🐛 버그 리포트
-
-## 환경
 - URL: {{source.url}}
-- 뷰포트: {{source.viewport.width}}×{{source.viewport.height}}
-- UA: {{source.userAgent}}
-- 캡쳐 방식: {{source.captureType}}
-
-## 스크린샷
-[첨부 이미지 참고]
-
 {{#if pins}}
-## 핀 주석
+## 핀 메모
+{{#if lite}}
 {{#each pins}}
-- **핀 {{id}}** ({{x}}%, {{y}}%): {{memo}}
+- **핀 {{id}}**{{tag}}: {{memo}}
 {{/each}}
 {{/if}}
-
+{{#if debug}}
+{{#each pins}}
+- **핀 {{id}}**{{tag}} ({{x}}%, {{y}}%): {{memo}}
+{{/each}}
+{{/if}}
+{{/if}}
 ## 요청
-위 스크린샷에서 표시된 핀 위치의 문제를 분석해주세요.
-
-1. 각 핀 위치에서 발생한 버그의 **원인 추정**
-2. 재현 조건 (어떤 상황에서 발생하는지)
-3. **수정 코드** 제안 (해당 컴포넌트 기준)
-4. 동일 패턴의 다른 위치에도 같은 문제가 있는지 점검
-
+핀 메모의 문제 원인과 수정안을 제안해주세요
 {{#if context.userNote}}
 ## 추가 메모
 {{context.userNote}}
 {{/if}}
+{{#if debug}}
+## 환경
+- 뷰포트: {{source.viewport.width}}×{{source.viewport.height}} · UA: {{source.userAgent}} · 캡처 방식: {{source.captureType}}
+{{/if}}
+[첨부: 캡처 이미지]

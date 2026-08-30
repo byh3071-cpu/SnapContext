@@ -13,7 +13,7 @@ tags: [architecture, messaging, context-pack]
 │                  Side Panel UI                   │
 │  ┌──────────┐ ┌─────────┐ ┌──────────────────┐  │
 │  │ Toolbar  │ │ Preview │ │ ContextPackPanel │  │
-│  │(캡쳐)    │ │+ 핀     │ │ 생성·복사·PNG     │  │
+│  │(캡처)    │ │+ 핀     │ │ 생성·복사·PNG     │  │
 │  └──────────┘ └─────────┘ └──────────────────┘  │
 └─────────────────────┬───────────────────────────┘
                       │ chrome.runtime.sendMessage
@@ -69,9 +69,9 @@ tags: [architecture, messaging, context-pack]
 ## 데이터 흐름
 
 ```
-캡쳐 PNG (data URL)
+캡처 PNG (data URL)
        ↓
-핀 배열 · 선택 셀렉터(요소 캡쳐 시)
+핀 배열 · 선택 셀렉터(요소 캡처 시)
        ↓
 탭 메타 (URL, title, viewport, UA) + 이미지 크기
        ↓
@@ -88,14 +88,14 @@ ContextPack (JSON 스키마: docs/CONTEXT-PACK-SPEC.md)
 |----|------|----------------|
 | `notionApiKey` | Notion Integration Token | sync |
 | `notionDatabaseId` | Context Inbox DB ID | sync |
-| `recentCaptures` | 최근 캡쳐 히스토리 (최대 20) | local |
+| `recentCaptures` | 최근 캡처 히스토리 (최대 20) | local |
 | `settings` | 테마, 기본 프롬프트 템플릿 등 | sync |
 
 v0.1에서는 필수 UX가 아니면 미연결일 수 있다.
 
 ## 보안·권한
 
-- **host_permissions:** `<all_urls>` — 캡쳐·메시징·탭 접근에 사용. 내부 배포·스토어 설명에 명시 권장.
+- **host_permissions:** `<all_urls>` — 캡처·메시징·탭 접근에 사용. 내부 배포·스토어 설명에 명시 권장.
 - Content Script는 선택·하이라이트·메타 응답 중심이며, 본문 데이터 외부 전송은 Context Pack 사용자 액션(복사·다운로드)에 따름.
 
 ## 관련 문서

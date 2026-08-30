@@ -4,11 +4,13 @@ import {
   getHistory,
   type CaptureHistoryItem
 } from '../../storage/history'
+import { saveBadgeLabel } from '../../storage/save-status'
 import { swissIcon } from '../utils/swiss-icons'
 import { mkSecHead } from '../utils/section'
 
 type HistoryListDeps = {
   onOpen: (item: CaptureHistoryItem) => void
+  onRetrySave: (item: CaptureHistoryItem) => void
   showToast: (message: string, kind?: 'info' | 'error') => void
 }
 
@@ -172,6 +174,14 @@ export function mountHistoryList(
       mkSlash(),
       document.createTextNode(`핀 ${item.pinsCount}`)
     )
+    const badgeText = saveBadgeLabel(item)
+    if (badgeText && item.saveStatus) {
+      const badge = document.createElement('span')
+      badge.className = `capture-history__save-badge capture-history__save-badge--${item.saveStatus}`
+      badge.textContent = badgeText
+      if (item.saveError) badge.title = item.saveError
+      meta.append(badge)
+    }
 
     body.append(primary, meta)
 
@@ -187,7 +197,20 @@ export function mountHistoryList(
     })
 
     row.append(idx, thumb, body)
-    wrap.append(row, deleteBtn)
+    wrap.append(row)
+    if (item.saveStatus === 'failed') {
+      const retryBtn = document.createElement('button')
+      retryBtn.type = 'button'
+      retryBtn.className = 'capture-history__retry'
+      retryBtn.setAttribute('aria-label', '저장 재시도')
+      retryBtn.textContent = '재시도'
+      retryBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation()
+        deps.onRetrySave(item)
+      })
+      wrap.append(retryBtn)
+    }
+    wrap.append(deleteBtn)
     return wrap
   }
 

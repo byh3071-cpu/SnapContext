@@ -4,6 +4,12 @@ export function showToast(
 ): void {
   const root = document.getElementById('toast-root')
   if (!root) return
+  if (!root.hasAttribute('aria-live')) {
+    root.setAttribute('aria-live', 'polite')
+  }
+  if (!root.hasAttribute('role')) {
+    root.setAttribute('role', 'status')
+  }
   const el = document.createElement('div')
   el.className = `toast toast--${kind}`
   el.textContent = message

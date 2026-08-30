@@ -699,7 +699,7 @@ async function qa5(side, sw) {
   const rowA = side.locator('.capture-history__item', { hasText: titleWith }).first()
   await rowA.waitFor({ state: 'visible', timeout: 5000 })
   await rowA.click()
-  const noticeOnA = await waitToast(side, '이전에 적용한 가리기·주석은 복원되지 않습니다', 'info', 3000)
+  const noticeOnA = await waitToast(side, '이전에 적용한 그리기(가리기 등)는 복원되지 않습니다', 'info', 3000)
   logStep('QA⑤ 주석 있던 캡처 복원 시 고지 노출', noticeOnA, noticeOnA ? '토스트 확인' : '토스트 미노출')
 
   // 다음 체크로 넘어가기 전에 토스트를 확실히 비운다 — 안 그러면 A의 잔존 토스트를
@@ -712,7 +712,7 @@ async function qa5(side, sw) {
   await rowB.waitFor({ state: 'visible', timeout: 5000 })
   await rowB.click()
   await side.waitForTimeout(400)
-  const noticeOnB = await waitToast(side, '이전에 적용한 가리기·주석은 복원되지 않습니다', 'info', 1500)
+  const noticeOnB = await waitToast(side, '이전에 적용한 그리기(가리기 등)는 복원되지 않습니다', 'info', 1500)
   logStep(
     'QA⑤ 주석 없던 캡처 복원 시 고지 없음(조건부 확인)',
     !noticeOnB,

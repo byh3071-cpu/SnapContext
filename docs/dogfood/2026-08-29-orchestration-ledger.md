@@ -77,6 +77,7 @@ status: open
 | DF-57 | 스토어 킷 stale (범위 밖·tag 차단) | `scripts/generate-store-screenshots.mjs`·`docs/store/listing-0.2.0-draft.md`가 0.4.2에서 폐지된 "익명 공유·공유 링크·7일 업로드"를 광고(critic) — 0.4.6 무관, 재심사 준비 때 필수 | 재심사 제출물 허위 | TASKS P0(tag 전) | 재심사 준비 티켓 신설 | 상 |
 | DF-58 | 워커 보고 규약 v2 첫 적용 (긍정) | W3-fix 워커(grok)가 신설 `[근거 불일치]`에 **5건**을 적음: 티켓의 제외 경로 부족(로드맵·ui-audit 잔존) · `스냅` vs `스냅샷` 불일치 · "md 12개" glob 14 중 BOM 12 · waitToast 마침표 · T4b 수치 오류 — 전부 원문 유지 + 기록. 티켓에 없는 게이트 제외 2경로를 스크립트에만 넣고 `[다음]`으로 결정 요청 | — | — | 규약 v2 확정 근거. 지휘자 결정: 제외 2경로(과거 상태 스냅샷 문서) 승인, 티켓 원문 갱신은 생략 | (칭찬) |
 | DF-59 | W3 수정 루프·critic 총계 | W3 critic FAIL(B2·M4) → W3-fix 19분(grok) → 재검증 PASS·MAJOR 0(뮤테이션 23종 중 22종 검출). **critic 누적 6회차·405k 토큰·약 75분**으로 세 웨이브 모두 "게이트 초록 → critic FAIL → 수정 → PASS" 패턴. 게이트가 못 잡은 결함 총 15건(W1 5·W2 2·W3 6·기타 2) | — | — | 적대 검증은 선택이 아니라 DoD 필수 항목(PAT 후보) | (기록) |
+| DF-60 | 스택 PR × squash 머지 (지휘자 설계 결함) | #25를 squash 머지하자 새 커밋이 생겨 스택된 #26·#27이 `CONFLICTING`. 공유 .git의 `origin/master` 참조 잠금 오류까지 겹침. 우회: 각 통합 worktree에서 `merge -X ours origin/master` → push → 머지. 그 과정에서 til.md를 "master 전용"으로 오판해 T4b 수정분을 되돌렸다가 재적용. 로컬 master의 문서 커밋 21개는 PR에 안 실려 최종 merge 커밋으로 합침 | 머지 3회가 40분 → 70분 | 위 절차 | 규칙: 스택 PR은 머지 커밋(`--merge`)으로, 또는 아래 PR 머지 후 위 브랜치 rebase. 지휘자 문서 커밋은 통합 브랜치에 얹기 | 중 |
 | DF-22 | vhk `receipt --mark-start` | 실행이 tracked `.vhk/.gitignore`를 수정 → 직후 `mission check`가 scope 밖 변경 경고(노이즈) | 경고 오독 | 무시·커밋 | receipt가 만지는 파일은 mission scope 기본 포함 또는 untracked로 | 하 |
 
 ## 정상 동작 확인(칭찬 목록 — 보고서 균형용)

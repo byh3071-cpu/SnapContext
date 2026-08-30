@@ -8,12 +8,12 @@ tags: [til]
 
 - MV3 Side Panel은 `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`로 아이콘 클릭 UX를 고정할 수 있다.
 - `getBoundingClientRect`는 CSS 픽셀이고 `captureVisibleTab` 이미지는 디바이스 픽셀이라 crop 시 `devicePixelRatio`를 곱해야 맞는다.
-- Side Panel만으로는 `activeTab` 제스처가 성립하지 않을 수 있어, `<all_urls>` host permission으로 캡쳐 권한을 확보하고 manifest에서 `activeTab`을 제거했다.
-- Context Pack은 캡쳐 PNG의 물리 크기와 탭 메타(URL/title/viewport/UA)를 묶어 AI 프롬프트·JSON·주석 PNG로 내보낼 수 있다.
+- Side Panel만으로는 `activeTab` 제스처가 성립하지 않을 수 있어, `<all_urls>` host permission으로 캡처 권한을 확보하고 manifest에서 `activeTab`을 제거했다.
+- Context Pack은 캡처 PNG의 물리 크기와 탭 메타(URL/title/viewport/UA)를 묶어 AI 프롬프트·JSON·주석 PNG로 내보낼 수 있다.
 - [2026-05-10] `chrome.commands`는 `Ctrl+Alt` 조합을 지원하지 않는다. 등록 자체가 무시되므로, 커스텀 단축키는 `Alt+Shift`를 사용해야 한다.
 - [2026-05-10] `navigator.clipboard.write()`(Blob 기반 클립보드 쓰기)는 MV3 Side Panel에서 `clipboardWrite` 권한 추가 없이 동작한다. Side Panel이 포커스를 가진 상태에서 호출하면 user gesture로 인정된다.
 - [2026-05-10] `chrome.sidePanel.open()`은 user gesture 토큰이 살아 있는 동안(=`await` 이전)에 호출해야 한다. `await` 후에는 gesture가 소실되어 호출이 실패한다.
-- [2026-05-10] `image-rendering: pixelated`는 아주 작은 아이콘에는 유용하나, 확대 시 계단 현상이 발생하므로 텍스트가 포함된 문서 캡쳐를 확대할 때는 기본값(bilinear)을 유지하는 것이 훨씬 가독성이 좋다.
+- [2026-05-10] `image-rendering: pixelated`는 아주 작은 아이콘에는 유용하나, 확대 시 계단 현상이 발생하므로 텍스트가 포함된 문서 캡처를 확대할 때는 기본값(bilinear)을 유지하는 것이 훨씬 가독성이 좋다.
 - **[2026-05-10 정정]** 위 항목은 `transform: scale()` 기반 줌일 때만 사실. `transform: scale` 은 GPU 컴포지팅 레이어를 만들고 거기서 GPU bilinear 보간을 강제 → CSS `image-rendering` 힌트 무시되어 어떤 값도 의미 없음. **줌을 `img.style.width/height` 직접 변경**으로 구현하면 GPU 합성을 우회하고 `image-rendering: pixelated` 가 정확히 적용되어 UI 캡처가 또렷함. 결론: pixelated 자체가 문제가 아니라 transform: scale 와의 결합이 문제.
 - [2026-05-10] `setPointerCapture(pointerId)` 가 활성화되면 후속 pointer 이벤트의 `ev.target` 이 캡처 대상 요소로 고정됨. 실제 커서 아래 요소를 알아내려면 `document.elementFromPoint(ev.clientX, ev.clientY)` 로 따로 조회해야 함.
 - [2026-05-10] `chrome.commands` 의 `suggested_key` 는 한 확장당 최대 4개. 5번째 추가하면 manifest 로드 실패. 수동 바인딩(`whale://extensions/shortcuts`) 으로 우회.

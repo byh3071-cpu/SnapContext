@@ -355,7 +355,11 @@ async function main() {
 
     /* ──────────────────────────────────────────────────────────────────
      * Phase J: #23 JSON copy
+     * JSON 복사·프롬프트＋JSON 은 기본 접힌 details 안이므로 먼저 연다.
+     * Phase K 직전까지 open 상태를 유지한다.
      * ──────────────────────────────────────────────────────────────── */
+    await page.locator('.context-pack-panel__raw > summary').click()
+    await wait(200)
     const jsonBtn = page
       .locator('.context-pack-panel button.context-pack-panel__btn')
       .filter({ hasText: 'JSON 복사' })

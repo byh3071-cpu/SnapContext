@@ -6,8 +6,10 @@ import type {
   PinItem
 } from '../types'
 import { generateContextPack } from '../context-pack/generator'
+import { pinKind, restorePinsFromPack, toggleKind } from '../context-pack/pin-kind'
 import * as history from '../storage/history'
-import { sendToBackground } from '../utils/messaging'
+import type { CaptureHistoryItem } from '../storage/history'
+import { sendToBackground, toKoreanErrorMessage } from '../utils/messaging'
 import type { ContextPackPanelApi } from './components/ContextPackPanel'
 import { mountAnnotationOverlay } from './components/AnnotationOverlay'
 import { mountAnnotationToolbar, type AnnotationTool } from './components/AnnotationToolbar'
@@ -221,6 +223,19 @@ function init(): void {
       pins = pins.map((p) => (p.id === pinId ? { ...p, memo } : p))
       syncPinOutputs({ debounceHistory: true })
     },
+    onToggleKind: (pinId) => {
+      pins = pins.map((p) =>
+        p.id === pinId ? { ...p, kind: toggleKind(pinKind(p)) } : p
+      )
+      const next = pins.find((p) => p.id === pinId)
+      if (!next) {
+        throw new Error(`핀 ${pinId} 의도 토글 대상을 찾을 수 없습니다`)
+      }
+      pinLayerMain.render(pins, activePinId)
+      memoList.updateKind(pinId, pinKind(next))
+      preview.refreshImageLightbox()
+      syncPinOutputs()
+    },
     onDelete: (pinId) => {
       pins = pins
         .filter((p) => p.id !== pinId)
@@ -431,7 +446,17 @@ function init(): void {
             pins: pins.map((p) => ({ id: p.id, memo: p.memo }))
           }
         : null,
-    showToast
+    showToast,
+    onSaveResult: (r) => {
+      if (!currentHistoryId) {
+        showToast('캡처 기록에 저장 상태를 남기지 못했습니다.', 'error')
+        return
+      }
+      const historyId = currentHistoryId
+      void history.updateSaveStatus(historyId, r).catch((error) => {
+        showToast(toKoreanErrorMessage(error), 'error')
+      })
+    }
   })
   imageActionsRef.refreshTokenStatus = imageActions.refreshTokenStatus
 
@@ -456,91 +481,95 @@ function init(): void {
     showToast
   })
 
+  const openHistoryItem = (item: CaptureHistoryItem): boolean => {
+    // Restore capture image to preview.
+    const imageData = item.imageBase64 ?? item.thumbnail
+    if (!imageData) {
+      showToast('이 캡처에는 저장된 이미지가 없습니다.', 'error')
+      return false
+    }
+
+    // Parse image dimensions from contextPack if available.
+    let imageWidth = 0
+    let imageHeight = 0
+    if (item.contextPack?.capture.imageSize) {
+      const [w, h] = item.contextPack.capture.imageSize.split('x').map(Number)
+      imageWidth = w || 0
+      imageHeight = h || 0
+    }
+
+    // Restore pins from contextPack annotations.
+    const restoredPins = item.contextPack
+      ? restorePinsFromPack(item.contextPack)
+      : []
+
+    // Build a CaptureResultPayload-like snapshot for the pack panel.
+    const viewport = item.contextPack?.capture.viewport
+      ? (() => {
+          const [w, h] = item.contextPack.capture.viewport.split('x').map(Number)
+          return { width: w || 0, height: h || 0 }
+        })()
+      : { width: 0, height: 0 }
+
+    captureSnapshot = {
+      type: 'CAPTURE_RESULT',
+      imageData,
+      captureType: item.captureType,
+      selectedElement: item.contextPack?.capture.selectedElement,
+      sourceUrl: item.url,
+      sourceTitle: item.title,
+      viewport,
+      userAgent: '',
+      debugLogs: item.contextPack?.debugLogs ?? [],
+      imageWidth,
+      imageHeight
+    }
+    capturedImage = imageData
+    currentHistoryId = item.id
+    currentHistoryTimestamp = item.timestamp
+    lastSaveCaptureTask = Promise.resolve()
+
+    // Apply to preview.
+    preview.setImage({
+      dataUrl: imageData,
+      captureType: item.captureType,
+      imageWidth,
+      imageHeight,
+      sourceUrl: item.url
+    })
+
+    // Restore pins.
+    pins = restoredPins
+    activePinId = null
+    refreshPins()
+
+    // 히스토리 항목엔 주석이 저장되지 않는다(PRD-0.4.3 비목표: "주석·가리기의 히스토리
+    // 저장·복원 — 세션-로컬(0.5+ 후보)") — 항상 빈 상태로 시작.
+    resetAnnotationsUi()
+
+    // Sync panels.
+    pinMemoHost.hidden = false
+    secPack.hidden = false
+    imageActions.sync()
+    if (item.contextPack) {
+      packRef.api?.loadPack(item.contextPack)
+    }
+    packRef.api?.sync()
+
+    // 이 캡처에 실제로 주석이 있었을 때만 고지한다 — 없던 캡처까지 매번 띄우면 과잉
+    // 알림이 된다(item.hasAnnotations 는 저장 시점 boolean 신호, pinsCount 와 동일 패턴).
+    if (item.hasAnnotations) {
+      showToast('이전에 적용한 그리기(가리기 등)는 복원되지 않습니다.', 'info')
+    }
+    showToast('캡처를 불러왔습니다.', 'info')
+    return true
+  }
+
   mountHistoryList(secHistory, {
-    onOpen: (item) => {
-      // Restore capture image to preview.
-      const imageData = item.imageBase64 ?? item.thumbnail
-      if (!imageData) {
-        showToast('이 캡처에는 저장된 이미지가 없습니다.', 'error')
-        return
-      }
-
-      // Parse image dimensions from contextPack if available.
-      let imageWidth = 0
-      let imageHeight = 0
-      if (item.contextPack?.capture.imageSize) {
-        const [w, h] = item.contextPack.capture.imageSize.split('x').map(Number)
-        imageWidth = w || 0
-        imageHeight = h || 0
-      }
-
-      // Restore pins from contextPack annotations.
-      const restoredPins = (item.contextPack?.annotations ?? []).map((a) => ({
-        id: a.id,
-        x: a.position.x,
-        y: a.position.y,
-        memo: a.memo ?? ''
-      }))
-
-      // Build a CaptureResultPayload-like snapshot for the pack panel.
-      const viewport = item.contextPack?.capture.viewport
-        ? (() => {
-            const [w, h] = item.contextPack.capture.viewport.split('x').map(Number)
-            return { width: w || 0, height: h || 0 }
-          })()
-        : { width: 0, height: 0 }
-
-      captureSnapshot = {
-        type: 'CAPTURE_RESULT',
-        imageData,
-        captureType: item.captureType,
-        selectedElement: item.contextPack?.capture.selectedElement,
-        sourceUrl: item.url,
-        sourceTitle: item.title,
-        viewport,
-        userAgent: '',
-        debugLogs: item.contextPack?.debugLogs ?? [],
-        imageWidth,
-        imageHeight
-      }
-      capturedImage = imageData
-      currentHistoryId = item.id
-      currentHistoryTimestamp = item.timestamp
-      lastSaveCaptureTask = Promise.resolve()
-
-      // Apply to preview.
-      preview.setImage({
-        dataUrl: imageData,
-        captureType: item.captureType,
-        imageWidth,
-        imageHeight,
-        sourceUrl: item.url
-      })
-
-      // Restore pins.
-      pins = restoredPins
-      activePinId = null
-      refreshPins()
-
-      // 히스토리 항목엔 주석이 저장되지 않는다(PRD-0.4.3 비목표: "주석·가리기의 히스토리
-      // 저장·복원 — 세션-로컬(0.5+ 후보)") — 항상 빈 상태로 시작.
-      resetAnnotationsUi()
-
-      // Sync panels.
-      pinMemoHost.hidden = false
-      secPack.hidden = false
-      imageActions.sync()
-      if (item.contextPack) {
-        packRef.api?.loadPack(item.contextPack)
-      }
-      packRef.api?.sync()
-
-      // 이 캡처에 실제로 주석이 있었을 때만 고지한다 — 없던 캡처까지 매번 띄우면 과잉
-      // 알림이 된다(item.hasAnnotations 는 저장 시점 boolean 신호, pinsCount 와 동일 패턴).
-      if (item.hasAnnotations) {
-        showToast('이전에 적용한 가리기·주석은 복원되지 않습니다.', 'info')
-      }
-      showToast('캡처를 불러왔습니다.', 'info')
+    onOpen: openHistoryItem,
+    onRetrySave: (item) => {
+      if (!openHistoryItem(item)) return
+      void imageActions.saveCurrent()
     },
     showToast
   })
@@ -559,7 +588,7 @@ function init(): void {
     // 무확인으로 주석을 통째로 날렸다 — 핀·주석 둘 다 없을 때만 확인 없이 통과시킨다.
     if (pins.length === 0 && annotations.length === 0) return true
     return showConfirm(
-      '새 캡처를 시작하면 기존 핀과 주석(가리기 등)이 삭제됩니다. 계속할까요?',
+      '새 캡처를 시작하면 기존 핀 메모와 그리기(가리기 등)가 삭제됩니다. 계속할까요?',
       app
     )
   }
@@ -618,7 +647,7 @@ function init(): void {
         showToast('캡처 기록을 저장하지 못했습니다.', 'error')
       })
     } catch {
-      /* Capture display should not fail if history persistence cannot start. */
+      showToast('캡처 기록 저장을 시작하지 못했습니다.', 'error')
     }
   }
 

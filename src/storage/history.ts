@@ -1,4 +1,5 @@
 import type { CaptureType, ContextPack } from '../types'
+import { applySaveResult, type SaveResult, type SaveStatus } from './save-status'
 
 export const CAPTURE_HISTORY_STORAGE_KEY = 'captureHistory'
 export const MAX_CAPTURE_HISTORY_ITEMS = 20
@@ -23,6 +24,9 @@ export type CaptureHistoryItem = {
    */
   hasAnnotations: boolean
   contextPack?: ContextPack
+  saveStatus?: SaveStatus
+  savedCaptureId?: string
+  saveError?: string
 }
 
 export type SaveCaptureInput = Omit<CaptureHistoryItem, 'thumbnail'> & {
@@ -186,6 +190,22 @@ export async function updateCaptureAnnotations(
             }
           : item
       )
+      .sort(byNewestFirst)
+  )
+
+  await writeItems(next)
+}
+
+export async function updateSaveStatus(
+  id: string,
+  r: SaveResult
+): Promise<void> {
+  if (!hasChromeStorage()) return
+
+  const existing = await readItems()
+  const next = enforceStorageBudget(
+    existing
+      .map((item) => (item.id === id ? applySaveResult(item, r) : item))
       .sort(byNewestFirst)
   )
 
