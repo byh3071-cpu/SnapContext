@@ -126,5 +126,7 @@ TASK: 스토어 일괄 재심사 제출 (0.4.2+0.4.3+0.4.6)
   done: qa046 30/30 · dogfood:verify 18/18 · qa043 33/33 · tag v0.4.6 (648afa4) · 킷 docs/store/{listing,submit-kit}-0.4.6.md · 스크린샷 5장(04-private-save) · 게이트 docs/store 현행 검사
   next_human: docs/store/submit-kit-0.4.6.md §1(pnpm build → zip) → §2 Chrome → §3 Whale
   note: dogfood:up 이후 dist는 로컬 endpoint 빌드 — 제출 전 반드시 pnpm build 재실행(킷 §1 경고)
+  kit_review: critic FAIL(BLOCKER 3·MAJOR 2 — '영역 캡처' 허위 2세대 대물림·전송 데이터 축소·zip bash heredoc·권한 대조 미실행·scene ③ 조건) → 수정 5b88cf8 → 재검증 PASS(새 BLOCKER 0, 잔여 MINOR: 05 이미지 "풀페이지" vs UI "전체" 동의어 — 다음 재생성 때)
+  zip: python scripts/pack-store-zip.py 실측 18 files·'/' 경로·로컬 endpoint 거부 경로 동작 확인(critic 격리 실증)
 ```
 
