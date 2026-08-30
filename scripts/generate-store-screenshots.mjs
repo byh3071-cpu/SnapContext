@@ -621,9 +621,12 @@ async function main() {
         await page.locator('.toast--info', { hasText: '내 AI에 저장됨' }).first().waitFor({ state: 'visible', timeout: 8000 })
         await page.locator('.capture-history__save-badge--saved').first().waitFor({ state: 'visible', timeout: 8000 })
         // 기록 목록의 "저장됨" 배지가 프레임 안에 오도록 — 내부 스크롤 컨테이너까지 포함해 중앙 정렬
+        // 프레임이 패널 이미지 하단을 잘라 보여주므로 "저장됨" 배지가 있는 기록 목록을 뷰포트 상단 근처로 올린다
         await page.evaluate(() => {
           const badge = document.querySelector('.capture-history__save-badge--saved')
-          if (badge) badge.scrollIntoView({ block: 'center', inline: 'nearest' })
+          if (!badge) return
+          const top = badge.getBoundingClientRect().top + window.scrollY
+          window.scrollTo(0, Math.max(0, top - 150))
         })
         await page.waitForTimeout(400)
       })
@@ -669,11 +672,11 @@ async function main() {
         file: '02-capture-modes.png',
         num: '02',
         eyebrow: '캡처 4모드',
-        title: '영역 · 요소 · 문서 ·\n풀페이지',
+        title: '화면 · 요소 · 문서 ·\n풀페이지',
         subtitle:
           '사이드패널에서 4가지 캡처를 바로 실행합니다. 기본 단축키 4개를 제공합니다.',
         bullets: [
-          '영역 Alt+Shift+V · 요소 Alt+Shift+E',
+          '화면 Alt+Shift+V · 요소 Alt+Shift+E',
           '문서 Alt+Shift+M · 풀페이지 Alt+Shift+G',
           'Chrome · Whale MV3 호환'
         ],
@@ -685,7 +688,7 @@ async function main() {
         eyebrow: '프롬프트 템플릿',
         title: '버그 리포트를\n템플릿으로',
         subtitle:
-          '버그 리포트·리팩토링·레퍼런스 템플릿이 캡처를 짧은 작업 지시문으로 바꿉니다. 상세 환경 정보는 버그 핀일 때만 붙습니다.',
+          '버그 리포트·리팩토링·레퍼런스 템플릿이 캡처를 짧은 작업 지시문으로 바꿉니다. 상세 환경 정보는 버그 리포트 템플릿에서 버그 핀이 있을 때만 붙습니다.',
         bullets: [
           '버그 · 리팩토링 · 레퍼런스 템플릿',
           '컨텍스트 팩 JSON 동봉',
@@ -715,7 +718,7 @@ async function main() {
         subtitle:
           '기본 단축키 4개를 제공합니다. PNG 복사는 브라우저 단축키 설정에서 직접 지정합니다.',
         bullets: [
-          'Alt+Shift+V — 영역 캡처',
+          'Alt+Shift+V — 화면 캡처',
           'Alt+Shift+E / M / G — 요소 · 문서 · 풀페이지',
           '도움말 패널에서 항상 확인'
         ],
